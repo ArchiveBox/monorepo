@@ -2,11 +2,11 @@
 
 Umbrella `uv` workspace for local development across:
 
-- `abxbus`
-- `abx-pkg`
-- `abx-plugins`
-- `abx-dl`
-- `archivebox`
+- [`abxbus`](https://github.com/ArchiveBox/abxbus)
+- [`abx-pkg`](https://github.com/ArchiveBox/abx-pkg)
+- [`abx-plugins`](https://github.com/ArchiveBox/abx-plugins)
+- [`abx-dl`](https://github.com/ArchiveBox/abx-dl)
+- [`archivebox`](https://github.com/ArchiveBox/archivebox)
 
 This repo only tracks the workspace root files. Each package stays in its own Git repository and is cloned next to the root workspace.
 
