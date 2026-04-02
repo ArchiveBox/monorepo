@@ -1,0 +1,24 @@
+[project]
+name = "archiveboxes-workspace"
+version = "0.0.0"
+description = "Local uv workspace for ArchiveBox packages"
+requires-python = ">=3.13"
+dependencies = []
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = [
+    "abxbus",
+    "abx-pkg",
+    "abx-plugins",
+    "abx-dl",
+    "archivebox",
+]
+
+[tool.uv.sources]
+abxbus = { workspace = true }
+abx-pkg = { workspace = true }
+abx-plugins = { workspace = true }
+abx-dl = { workspace = true }

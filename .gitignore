@@ -1,0 +1,6 @@
+/*
+!/.gitignore
+!/pyproject.toml
+!/uv.lock
+!/bin/
+!/bin/setup.sh
