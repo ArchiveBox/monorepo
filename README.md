@@ -18,10 +18,18 @@ cd monorepo
 ./bin/setup.sh
 ```
 
-`bin/setup.sh` clones the sibling repos if they are missing, creates the root `.venv`, and runs:
+`bin/setup.sh` clones missing sibling repos, tries to fast-forward existing checkouts with `git pull --ff-only` while ignoring pull failures caused by local repo state, creates the root `.venv`, and runs:
 
 ```bash
 uv sync --all-packages --all-extras --no-cache --active
+```
+
+You can also copy this script into any member repo as `bin/setup_monorepo.sh`. When run from inside a member checkout, it bootstraps `../` into a real `ArchiveBox/monorepo` git checkout first, then continues with the normal sibling repo setup.
+
+```bash
+git clone https://github.com/ArchiveBox/abxbus
+cd abxbus
+./bin/setup_monorepo.sh
 ```
 
 ## Workflow Rules
