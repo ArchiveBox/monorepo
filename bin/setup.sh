@@ -35,4 +35,4 @@ cd "$ROOT_DIR"
 uv venv --allow-existing "$ROOT_DIR/.venv"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/.venv/bin/activate"
-uv sync --all-packages --all-extras --group dev --no-cache --active
+uv sync --all-packages --all-extras --no-cache --active

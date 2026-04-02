@@ -21,7 +21,7 @@ cd monorepo
 `bin/setup.sh` clones the sibling repos if they are missing, creates the root `.venv`, and runs:
 
 ```bash
-uv sync --all-packages --all-extras --group dev --no-cache --active
+uv sync --all-packages --all-extras --no-cache --active
 ```
 
 ## Workflow Rules
