@@ -5,31 +5,30 @@ ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 GITHUB_BASE="${GITHUB_BASE:-https://github.com/ArchiveBox}"
 
 clone_repo() {
-    local target_dir="$1"
-    local repo_name="$2"
+    local repo_name="$1"
 
-    if [[ -d "$ROOT_DIR/$target_dir/.git" ]]; then
-        printf 'Using existing checkout: %s\n' "$target_dir"
+    if [[ -d "$ROOT_DIR/$repo_name/.git" ]]; then
+        printf 'Using existing checkout: %s\n' "$repo_name"
         return
     fi
 
-    if [[ -e "$ROOT_DIR/$target_dir" ]]; then
-        printf 'Refusing to overwrite existing path: %s\n' "$ROOT_DIR/$target_dir" >&2
+    if [[ -e "$ROOT_DIR/$repo_name" ]]; then
+        printf 'Refusing to overwrite existing path: %s\n' "$ROOT_DIR/$repo_name" >&2
         exit 1
     fi
 
-    printf 'Cloning %s/%s.git -> %s\n' "$GITHUB_BASE" "$repo_name" "$target_dir"
-    git clone "$GITHUB_BASE/$repo_name.git" "$ROOT_DIR/$target_dir"
+    printf 'Cloning %s/%s.git -> %s\n' "$GITHUB_BASE" "$repo_name" "$repo_name"
+    git clone "$GITHUB_BASE/$repo_name.git" "$ROOT_DIR/$repo_name"
 }
 
-while read -r target_dir repo_name; do
-    clone_repo "$target_dir" "$repo_name"
+while read -r repo_name; do
+    clone_repo "$repo_name"
 done <<'EOF'
-abxbus abxbus
-abx-pkg abx-pkg
-abx-plugins abx-plugins
-abx-dl abx-dl
-archivebox ArchiveBox
+abxbus
+abx-pkg
+abx-plugins
+abx-dl
+archivebox
 EOF
 
 cd "$ROOT_DIR"
