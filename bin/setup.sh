@@ -5,17 +5,24 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 GITHUB_BASE="${GITHUB_BASE:-https://github.com/ArchiveBox}"
 MONOREPO_REMOTE="${MONOREPO_REMOTE:-$GITHUB_BASE/monorepo.git}"
+REPO_NAMES=(abxbus abx-pkg abx-plugins abx-dl archivebox)
 
 is_workspace_root() {
     local repo_root="$1"
-    [[ -f "$repo_root/pyproject.toml" ]] && rg -q '^\[tool\.uv\.workspace\]' "$repo_root/pyproject.toml"
+    [[ -f "$repo_root/pyproject.toml" ]]
 }
 
 is_member_repo() {
-    case "$(basename "$1")" in
-        abxbus | abx-pkg | abx-plugins | abx-dl | archivebox) return 0 ;;
-        *) return 1 ;;
-    esac
+    local repo_root="$1"
+    local repo_name
+
+    for repo_name in "${REPO_NAMES[@]}"; do
+        if [[ "$(basename "$repo_root")" == "$repo_name" ]]; then
+            return 0
+        fi
+    done
+
+    return 1
 }
 
 monorepo_remote_matches() {
@@ -29,6 +36,49 @@ monorepo_remote_matches() {
             return 1
             ;;
     esac
+}
+
+warn() {
+    printf 'Warning: %s\n' "$1" >&2
+}
+
+have_ldap_build_deps() {
+    if command -v dpkg-query >/dev/null 2>&1; then
+        dpkg-query -W -f='${Status}' libldap2-dev 2>/dev/null | grep -q 'install ok installed' && return 0
+    fi
+
+    if command -v brew >/dev/null 2>&1; then
+        brew --prefix openldap >/dev/null 2>&1 && return 0
+    fi
+
+    return 1
+}
+
+ensure_ldap_build_deps() {
+    if have_ldap_build_deps; then
+        return
+    fi
+
+    printf 'Ensuring LDAP build dependencies (best effort)\n'
+
+    if command -v apt >/dev/null 2>&1 && sudo -n apt install -y libldap2-dev >/dev/null 2>&1; then
+        return
+    fi
+
+    if command -v brew >/dev/null 2>&1 && brew install openldap >/dev/null 2>&1; then
+        return
+    fi
+
+    warn "Could not auto-install LDAP build dependencies; continuing. If you need archivebox[ldap], run: sudo apt install libldap2-dev || brew install openldap"
+}
+
+sync_workspace() {
+    if uv sync --all-packages --all-extras --no-cache --active; then
+        return
+    fi
+
+    warn "'uv sync --all-packages --all-extras --no-cache --active' failed; retrying without --all-extras"
+    uv sync --all-packages --no-cache --active
 }
 
 bootstrap_monorepo_root() {
@@ -102,18 +152,24 @@ ensure_member_repo() {
     git clone "$GITHUB_BASE/$repo_name.git" "$repo_dir"
 }
 
-while read -r repo_name; do
+for repo_name in "${REPO_NAMES[@]}"; do
     ensure_member_repo "$repo_name"
-done <<'EOF'
-abxbus
-abx-pkg
-abx-plugins
-abx-dl
-archivebox
-EOF
+done
 
 cd "$ROOT_DIR"
 uv venv --allow-existing "$ROOT_DIR/.venv"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/.venv/bin/activate"
-uv sync --all-packages --all-extras --no-cache --active
+ensure_ldap_build_deps
+sync_workspace
+echo
+echo
+echo "[√] Monorepo setup complete, cloned and pulled: ${REPO_NAMES[*]}"
+echo "    MONOREPO_ROOT=$ROOT_DIR"
+echo "    VIRTUAL_ENV=$VIRTUAL_ENV"
+echo "    PYTHON_BIN=$VIRTUAL_ENV/bin/python"
+echo "    NODE_BIN=$(which node)"
+echo
+echo "TIPS:"
+echo " - Always use 'uv run ...' within each subrepo, never in the root & never run 'python ...' directly"
+echo " - Always read $ROOT_DIR/README.md into context before starting any work"
