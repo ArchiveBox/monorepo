@@ -95,3 +95,15 @@ cd abxbus
 - Usage: `archivebox` uses `abx-dl` to install plugin binaries, run snapshot downloads, and handle plugin-facing runtime work.
 - Boundary: `archivebox` should never know about individual plugins or their resources such as Chrome, and it should not re-implement functionality that already belongs in `abx-dl`.
 - Runtime model: `archivebox` listens to the `abx-dl` event stream, projects events into its database, and injects events back to steer `abx-dl`. `abx-dl` owns the actual orchestration runtime for snapshot execution and installs.
+
+## Related Projects
+
+Similar Python networking building-block / toy / simulation libraries:
+
+- [`pypacker`](https://github.com/mike01/pypacker) — fastest/simplest Python packet manipulation lib (lean scapy alternative)
+- [`py2p`](https://pypi.org/project/py2p/) — peer-to-peer mesh networking with a simple `MeshSocket` API
+- [`AnyMesh`](https://github.com/AnyMesh/anyMesh-Python) — decentralized auto-discover/auto-connect mesh API built on Twisted
+- [`mrpc-python`](https://github.com/alex-sherman/mrpc-python) — lightweight RPC framework for mesh topologies, aimed at IoT
+- [`Mininet`](https://github.com/mininet/mininet) — full network emulation (hosts, switches, links) with a Python API
+- [`FNSS`](https://fnss.github.io/) — Fast Network Simulation Setup — topology-as-code with adapters for ns-2, ns-3, Mininet, etc.
+- [`Meshtastic`](https://github.com/meshtastic/python) — Python API for Meshtastic LoRa mesh devices
