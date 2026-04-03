@@ -88,7 +88,7 @@ dev = [
 
 [[package]]
 name = "abx-pkg"
-version = "1.9.23"
+version = "1.9.26"
 source = { editable = "abx-pkg" }
 dependencies = [
     { name = "pip" },
@@ -168,7 +168,7 @@ dev = [
 
 [[package]]
 name = "abx-plugins"
-version = "1.10.22"
+version = "1.10.25"
 source = { editable = "abx-plugins" }
 dependencies = [
     { name = "abx-pkg" },

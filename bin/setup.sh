@@ -177,6 +177,9 @@ for repo_name in "${REPO_NAMES[@]}"; do
 done
 
 cd "$ROOT_DIR"
+deactivate || true
+rm -Rf ./*/.venv   # delete all sub-repo venvs, the monorepo venv needs to take precedence
+
 uv venv --allow-existing "$ROOT_DIR/.venv"
 # shellcheck disable=SC1091
 source "$ROOT_DIR/.venv/bin/activate"
