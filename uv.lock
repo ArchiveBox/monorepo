@@ -56,9 +56,9 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "abx-pkg", specifier = ">=1.9.23" },
-    { name = "abx-plugins", specifier = ">=1.10.22" },
-    { name = "abxbus", specifier = ">=2.4.9" },
+    { name = "abx-pkg", editable = "abx-pkg" },
+    { name = "abx-plugins", editable = "abx-plugins" },
+    { name = "abxbus", editable = "abxbus" },
     { name = "flake8", marker = "extra == 'dev'", specifier = ">=7.1.1" },
     { name = "flask", marker = "extra == 'dev'", specifier = ">=3.0" },
     { name = "jambo", specifier = ">=0.1.7" },
@@ -136,7 +136,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "abx-pkg", extras = ["rich", "pyinfra", "ansible"], marker = "extra == 'all'" },
+    { name = "abx-pkg", extras = ["rich", "pyinfra", "ansible"], marker = "extra == 'all'", editable = "abx-pkg" },
     { name = "ansible", marker = "extra == 'ansible'", specifier = ">=12.3.0" },
     { name = "ansible-core", marker = "extra == 'ansible'", specifier = ">=2.0.0" },
     { name = "ansible-runner", marker = "extra == 'ansible'", specifier = ">=2.4.2" },
@@ -195,7 +195,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "abx-pkg", specifier = ">=1.9.23" },
+    { name = "abx-pkg", editable = "abx-pkg" },
     { name = "feedparser", marker = "extra == 'dev'", specifier = ">=6.0.0" },
     { name = "jambo", specifier = ">=0.1.7" },
     { name = "jinja2", marker = "extra == 'dev'", specifier = ">=3.1.0" },
@@ -484,10 +484,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "abx-dl", specifier = ">=1.10.21" },
-    { name = "abx-pkg", specifier = ">=1.9.23" },
-    { name = "abx-plugins", specifier = ">=1.10.22" },
-    { name = "abxbus", specifier = ">=2.4.9" },
+    { name = "abx-dl", editable = "abx-dl" },
+    { name = "abx-pkg", editable = "abx-pkg" },
+    { name = "abx-plugins", editable = "abx-plugins" },
+    { name = "abxbus", editable = "abxbus" },
     { name = "archivebox", extras = ["sonic", "ldap", "debug"], marker = "extra == 'all'" },
     { name = "atomicwrites", specifier = "==1.4.1" },
     { name = "base32-crockford", specifier = ">=0.3.0" },
