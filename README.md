@@ -18,7 +18,7 @@ cd monorepo
 ./bin/setup.sh
 ```
 
-`bin/setup.sh` clones missing sibling repos, tries to fast-forward existing checkouts with `git pull --ff-only` while ignoring pull failures caused by local repo state, creates the root `.venv`, makes a best-effort attempt to run `sudo apt install libldap2-dev || brew install openldap`, and then runs:
+`bin/setup.sh` clones missing sibling repos, tries to fast-forward existing checkouts with `git pull --ff-only` while ignoring pull failures caused by local repo state, refreshes `bin/setup_monorepo.sh` hardlinks inside each member repo so they always match the root script, creates the root `.venv`, makes a best-effort attempt to run `sudo apt install libldap2-dev || brew install openldap`, and then runs:
 
 ```bash
 uv sync --all-packages --all-extras --no-cache --active
@@ -26,12 +26,12 @@ uv sync --all-packages --all-extras --no-cache --active
 
 If the extras sync still fails, the script retries automatically without `--all-extras`. That gets the workspace up even when LDAP build deps are unavailable, but `archivebox[ldap]` will remain unavailable until you install them manually.
 
-You can also copy `bin/setup.sh` into any member repo. When run from inside a member checkout, it bootstraps `../` into a real `ArchiveBox/monorepo` git checkout first, then continues with the normal sibling repo setup.
+Each member repo also gets a `bin/setup_monorepo.sh` hardlink back to the root script. When run from inside a member checkout, it bootstraps `../` into a real `ArchiveBox/monorepo` git checkout first, then continues with the normal sibling repo setup.
 
 ```bash
 git clone https://github.com/ArchiveBox/abxbus
 cd abxbus
-./bin/setup.sh
+./bin/setup_monorepo.sh
 ```
 
 ## Workflow Rules

@@ -7,11 +7,6 @@ GITHUB_BASE="${GITHUB_BASE:-https://github.com/ArchiveBox}"
 MONOREPO_REMOTE="${MONOREPO_REMOTE:-$GITHUB_BASE/monorepo.git}"
 REPO_NAMES=(abxbus abx-pkg abx-plugins abx-dl archivebox)
 
-is_workspace_root() {
-    local repo_root="$1"
-    [[ -f "$repo_root/pyproject.toml" ]]
-}
-
 is_member_repo() {
     local repo_root="$1"
     local repo_name
@@ -81,6 +76,27 @@ sync_workspace() {
     uv sync --all-packages --no-cache --active
 }
 
+ensure_setup_link() {
+    local repo_name="$1"
+    local repo_dir="$ROOT_DIR/$repo_name"
+    local link_path="$repo_dir/bin/setup_monorepo.sh"
+    local source_path="$ROOT_DIR/bin/setup.sh"
+
+    mkdir -p "$repo_dir/bin"
+
+    if [[ -e "$link_path" ]] && [[ "$source_path" -ef "$link_path" ]]; then
+        return
+    fi
+
+    if [[ -d "$link_path" && ! -L "$link_path" ]]; then
+        printf 'Refusing to replace directory: %s\n' "$link_path" >&2
+        exit 1
+    fi
+
+    rm -f "$link_path"
+    ln "$source_path" "$link_path"
+}
+
 bootstrap_monorepo_root() {
     local monorepo_root="$1"
     local origin_url=""
@@ -119,11 +135,11 @@ bootstrap_monorepo_root() {
     fi
 }
 
-if is_workspace_root "$SCRIPT_REPO_ROOT"; then
-    ROOT_DIR="$SCRIPT_REPO_ROOT"
-elif is_member_repo "$SCRIPT_REPO_ROOT"; then
+if is_member_repo "$SCRIPT_REPO_ROOT"; then
     ROOT_DIR="$(cd -- "$SCRIPT_REPO_ROOT/.." && pwd)"
     bootstrap_monorepo_root "$ROOT_DIR"
+elif [[ -f "$SCRIPT_REPO_ROOT/pyproject.toml" ]]; then
+    ROOT_DIR="$SCRIPT_REPO_ROOT"
 else
     printf 'Unable to infer monorepo root from script location: %s\n' "$SCRIPT_DIR" >&2
     exit 1
@@ -154,6 +170,10 @@ ensure_member_repo() {
 
 for repo_name in "${REPO_NAMES[@]}"; do
     ensure_member_repo "$repo_name"
+done
+
+for repo_name in "${REPO_NAMES[@]}"; do
+    ensure_setup_link "$repo_name"
 done
 
 cd "$ROOT_DIR"
