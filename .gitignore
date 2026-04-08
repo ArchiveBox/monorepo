@@ -1,11 +1,12 @@
 .DS_Store
-.venv
+.venv/
 .__pycache__/
 *.pyc
 .vscode/
 .claude/
 .codex/
 .cursor/
+.ruff_cache/
 
 abxbus/
 abx-pkg/
@@ -18,3 +19,4 @@ temp*/
 data/
 data*/
 out/
+dist/
