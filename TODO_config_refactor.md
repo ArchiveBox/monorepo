@@ -1,9 +1,12 @@
 # TODO: Machine Config Refactor
 
+codex resume 'refactor Machine config modification to use a seaprate
+ConfigKeyValue model with append-only events'
+
 ## Goal
 
-Replace `Machine.config` as a `JSONField` on `Machine` with a separate normalized model, while preserving the existing Python-level `machine.config` API for current callers.
-
+Replace `Machine.config` as a `JSONField` on `Machine` with a separate normalized model, while preserving 
+the existing Python-level `machine.config` API for current callers.
 Proposed new model shape:
 
 ```py
