@@ -18,7 +18,7 @@ members = [
 
 [[package]]
 name = "abx-dl"
-version = "1.10.29"
+version = "1.10.30"
 source = { editable = "abx-dl" }
 dependencies = [
     { name = "abx-plugins" },
@@ -379,7 +379,7 @@ wheels = [
 
 [[package]]
 name = "archivebox"
-version = "0.9.29rc1"
+version = "0.9.30rc1"
 source = { editable = "archivebox" }
 dependencies = [
     { name = "abx-dl" },
