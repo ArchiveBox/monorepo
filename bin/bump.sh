@@ -4,7 +4,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPOS=(abxbus abx-pkg abx-plugins abx-dl archivebox)
+REPOS=(abxbus abxpkg abx-plugins abx-dl archivebox)
 TEMP_WORKTREES=()
 
 cleanup() {
