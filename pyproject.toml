@@ -22,3 +22,4 @@ abxbus = { workspace = true }
 abxpkg = { workspace = true }
 abx-plugins = { workspace = true }
 abx-dl = { workspace = true }
+archivebox = { workspace = true }
