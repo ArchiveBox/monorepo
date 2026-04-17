@@ -79,7 +79,7 @@ dev = [
 
 [[package]]
 name = "abx-plugins"
-version = "1.10.29"
+version = "1.10.30"
 source = { editable = "abx-plugins" }
 dependencies = [
     { name = "abxpkg" },
@@ -477,7 +477,7 @@ requires-dist = [
     { name = "abx-plugins", editable = "abx-plugins" },
     { name = "abxbus", editable = "abxbus" },
     { name = "abxpkg", editable = "abxpkg" },
-    { name = "archivebox", extras = ["sonic", "ldap", "debug"], marker = "extra == 'all'" },
+    { name = "archivebox", extras = ["sonic", "ldap", "debug"], marker = "extra == 'all'", editable = "archivebox" },
     { name = "atomicwrites", specifier = "==1.4.1" },
     { name = "base32-crockford", specifier = ">=0.3.0" },
     { name = "click", specifier = ">=8.3.1" },
