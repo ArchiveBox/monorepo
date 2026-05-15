@@ -18,7 +18,7 @@ members = [
 
 [[package]]
 name = "abx-dl"
-version = "1.10.37"
+version = "1.10.40"
 source = { editable = "abx-dl" }
 dependencies = [
     { name = "abx-plugins" },
@@ -50,7 +50,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "abx-plugins", specifier = ">=1.10.31" },
+    { name = "abx-plugins", specifier = ">=1.10.36" },
     { name = "abxbus", specifier = ">=2.4.9" },
     { name = "abxpkg", specifier = ">=1.10.5" },
     { name = "jambo", specifier = ">=0.1.7" },
@@ -79,7 +79,7 @@ dev = [
 
 [[package]]
 name = "abx-plugins"
-version = "1.10.32"
+version = "1.10.36"
 source = { editable = "abx-plugins" }
 dependencies = [
     { name = "abxpkg" },
@@ -304,7 +304,7 @@ wheels = [
 
 [[package]]
 name = "archivebox"
-version = "0.9.30rc7"
+version = "0.9.30rc12"
 source = { editable = "archivebox" }
 dependencies = [
     { name = "abx-dl" },
@@ -398,8 +398,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "abx-dl", specifier = ">=1.10.37" },
-    { name = "abx-plugins", specifier = ">=1.10.32" },
+    { name = "abx-dl", specifier = ">=1.10.40" },
+    { name = "abx-plugins", specifier = ">=1.10.36" },
     { name = "abxbus", specifier = ">=2.5.0" },
     { name = "abxpkg", specifier = ">=1.10.7" },
     { name = "archivebox", extras = ["sonic", "ldap", "debug"], marker = "extra == 'all'" },
