@@ -10,7 +10,6 @@ package = false
 
 [tool.uv.workspace]
 members = [
-    "abxbus",
     "abxpkg",
     "abx-plugins",
     "abx-dl",
@@ -18,7 +17,6 @@ members = [
 ]
 
 [tool.uv.sources]
-abxbus = { workspace = true }
 abxpkg = { workspace = true }
 abx-plugins = { workspace = true }
 abx-dl = { workspace = true }
