@@ -18,7 +18,7 @@ members = [
 
 [[package]]
 name = "abx-dl"
-version = "1.10.41"
+version = "1.10.50"
 source = { editable = "abx-dl" }
 dependencies = [
     { name = "abx-plugins" },
@@ -50,9 +50,9 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "abx-plugins", specifier = ">=1.10.37" },
-    { name = "abxbus", specifier = ">=2.4.9" },
-    { name = "abxpkg", specifier = ">=1.10.5" },
+    { name = "abx-plugins", specifier = ">=1.10.55" },
+    { name = "abxbus", specifier = ">=2.5.4" },
+    { name = "abxpkg", specifier = ">=1.10.7" },
     { name = "jambo", specifier = ">=0.1.7" },
     { name = "platformdirs", specifier = ">=4.0.0" },
     { name = "psutil", specifier = ">=7.2.1" },
@@ -79,7 +79,7 @@ dev = [
 
 [[package]]
 name = "abx-plugins"
-version = "1.10.37"
+version = "1.10.55"
 source = { editable = "abx-plugins" }
 dependencies = [
     { name = "abxpkg" },
@@ -103,7 +103,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "abxpkg", specifier = ">=1.10.4" },
+    { name = "abxpkg", specifier = ">=1.10.7" },
     { name = "jambo", specifier = ">=0.1.7" },
     { name = "rich-click", specifier = ">=1.9.7" },
     { name = "uv", specifier = ">=0.8.22" },
@@ -124,7 +124,7 @@ dev = [
 
 [[package]]
 name = "abxbus"
-version = "2.5.0"
+version = "2.5.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -133,9 +133,9 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "uuid7" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5f/41/9729a8dd75d215f5f45956be2cfa4eadbe49a5a052831f275a0b3af5341b/abxbus-2.5.0.tar.gz", hash = "sha256:5a10583ad1cad06b467c3535818ce908e4a4460409faf5c447398a35a3516113", size = 125262, upload-time = "2026-05-13T10:00:18.381Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/52/0c/e9b7a4c53de098fada6a375c94ecee4551772d69e24bd7abfa9f777f2e38/abxbus-2.5.4.tar.gz", hash = "sha256:2e683c55e90b56edf02a93752a61741e39a2faa3409376339fcbc8b152bc0a5e", size = 127266, upload-time = "2026-05-16T22:59:07.729Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/12/2c/25497ea5124d22ecb3cd3640b587266a381ced0b8b28d86cc791fd4311ff/abxbus-2.5.0-py3-none-any.whl", hash = "sha256:2c37ff9bf176f52dcde55ffa38369a3823ea69113785a1ee2d747bd4476eb851", size = 120401, upload-time = "2026-05-13T10:00:19.722Z" },
+    { url = "https://files.pythonhosted.org/packages/ad/34/376fe9bdea9126f39bf35ae482251d3cc244e86f0109e413639b8d2f224c/abxbus-2.5.4-py3-none-any.whl", hash = "sha256:32d0452e5492b9d89be0322bf5f804c3e354fae03a96a5f9e4723909df81d902", size = 122277, upload-time = "2026-05-16T22:59:06.56Z" },
 ]
 
 [[package]]
@@ -304,7 +304,7 @@ wheels = [
 
 [[package]]
 name = "archivebox"
-version = "0.9.30rc13"
+version = "0.9.30rc39"
 source = { editable = "archivebox" }
 dependencies = [
     { name = "abx-dl" },
@@ -398,9 +398,9 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "abx-dl", specifier = ">=1.10.41" },
-    { name = "abx-plugins", specifier = ">=1.10.37" },
-    { name = "abxbus", specifier = ">=2.5.0" },
+    { name = "abx-dl", specifier = ">=1.10.50" },
+    { name = "abx-plugins", specifier = ">=1.10.55" },
+    { name = "abxbus", specifier = ">=2.5.4" },
     { name = "abxpkg", specifier = ">=1.10.7" },
     { name = "archivebox", extras = ["sonic", "ldap", "debug"], marker = "extra == 'all'" },
     { name = "atomicwrites", specifier = "==1.4.1" },
