@@ -3,8 +3,13 @@
 set -Eeuo pipefail
 IFS=$'\n\t'
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPOS=(abxbus abxpkg abx-plugins abx-dl archivebox)
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DEFAULT_REPOS=(abxpkg abx-plugins abx-dl archivebox)
+if [[ "$#" -gt 0 ]]; then
+    REPOS=("$@")
+else
+    REPOS=("${DEFAULT_REPOS[@]}")
+fi
 TEMP_WORKTREES=()
 
 cleanup() {
@@ -116,6 +121,7 @@ def parse(version: str) -> tuple[int, int, int, int]:
     return (int(major), int(minor), int(patch), int(rc) if rc is not None else 10_000)
 
 versions = [line.strip() for line in os.environ.get('RELEASE_TAGS', '').splitlines() if line.strip()]
+versions = [version[1:] if version.startswith('v') else version for version in versions]
 if not versions:
     print('')
 else:
