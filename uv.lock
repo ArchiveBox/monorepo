@@ -18,7 +18,7 @@ members = [
 
 [[package]]
 name = "abx-dl"
-version = "1.11.115"
+version = "1.11.145"
 source = { editable = "abx-dl" }
 dependencies = [
     { name = "abx-plugins" },
@@ -79,7 +79,7 @@ dev = [
 
 [[package]]
 name = "abx-plugins"
-version = "1.11.115"
+version = "1.11.145"
 source = { editable = "abx-plugins" }
 dependencies = [
     { name = "abxbus" },
@@ -210,7 +210,7 @@ dev = [
 
 [[package]]
 name = "abxpkg"
-version = "1.11.112"
+version = "1.11.142"
 source = { editable = "abxpkg" }
 dependencies = [
     { name = "pip" },
@@ -372,7 +372,7 @@ wheels = [
 
 [[package]]
 name = "archivebox"
-version = "0.9.33rc67"
+version = "0.9.34rc28"
 source = { editable = "archivebox" }
 dependencies = [
     { name = "abx-dl" },
