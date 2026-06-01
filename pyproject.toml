@@ -2,7 +2,7 @@
 name = "archiveboxes-workspace"
 version = "0.0.0"
 description = "Local uv workspace for ArchiveBox packages"
-requires-python = ">=3.11"
+requires-python = ">=3.12,<3.15"
 dependencies = []
 
 [tool.uv]
