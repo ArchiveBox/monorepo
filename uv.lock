@@ -18,7 +18,7 @@ members = [
 
 [[package]]
 name = "abx-dl"
-version = "1.11.145"
+version = "1.11.155"
 source = { editable = "abx-dl" }
 dependencies = [
     { name = "abx-plugins" },
@@ -79,7 +79,7 @@ dev = [
 
 [[package]]
 name = "abx-plugins"
-version = "1.11.145"
+version = "1.11.155"
 source = { editable = "abx-plugins" }
 dependencies = [
     { name = "abxbus" },
@@ -210,7 +210,7 @@ dev = [
 
 [[package]]
 name = "abxpkg"
-version = "1.11.142"
+version = "1.11.153"
 source = { editable = "abxpkg" }
 dependencies = [
     { name = "pip" },
@@ -372,7 +372,7 @@ wheels = [
 
 [[package]]
 name = "archivebox"
-version = "0.9.34rc28"
+version = "0.9.34rc37"
 source = { editable = "archivebox" }
 dependencies = [
     { name = "abx-dl" },
@@ -453,6 +453,7 @@ dev = [
     { name = "pytest-cov" },
     { name = "pytest-django" },
     { name = "pytest-httpserver" },
+    { name = "pytest-timeout" },
     { name = "recommonmark" },
     { name = "requests-tracker" },
     { name = "ruff" },
@@ -531,6 +532,7 @@ dev = [
     { name = "pytest-cov", specifier = ">=6.0.0" },
     { name = "pytest-django", specifier = ">=4.11.1" },
     { name = "pytest-httpserver", specifier = ">=1.1.0" },
+    { name = "pytest-timeout", specifier = ">=2.3.1" },
     { name = "recommonmark", specifier = ">=0.7.1" },
     { name = "requests-tracker", specifier = ">=0.3.3" },
     { name = "ruff", specifier = ">=0.6.6" },
