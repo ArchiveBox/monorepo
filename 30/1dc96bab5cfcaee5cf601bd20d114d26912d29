@@ -1,0 +1,22 @@
+TODO_latest_bugs.md
+  s_c5ae786df4a14c::t_116ab6ac8af3e0 30-66
+  s_c5ae786df4a14c::t_af0e3bbb626bba 1-16,18-29,67-88
+uv.lock
+  ai_agent 21,82,213,375,456,535
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "301dc96bab5cfcaee5cf601bd20d114d26912d29",
+  "prompts": {},
+  "sessions": {
+    "s_c5ae786df4a14c": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e81c2-3271-70c1-8ea7-2c49783fb389",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
