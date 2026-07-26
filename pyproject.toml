@@ -1,15 +1,9 @@
 [project]
 name = "archiveboxes-workspace"
 version = "0.0.0"
-description = "Local uv workspace for ArchiveBox packages"
-requires-python = ">=3.12,<3.15"
-dependencies = []
-
-[tool.uv]
-package = false
-
-[tool.uv.workspace]
-members = [
+description = "Local uv monorepo environment for ArchiveBox packages"
+requires-python = ">=3.13,<3.15"
+dependencies = [
     "abxbus",
     "abxpkg",
     "abx-plugins",
@@ -17,9 +11,22 @@ members = [
     "archivebox",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.3.3,<9",
+    "pytest-codeblocks>=0.17.0",
+]
+
+[tool.uv]
+package = false
+
 [tool.uv.sources]
-abxbus = { workspace = true }
-abxpkg = { workspace = true }
-abx-plugins = { workspace = true }
-abx-dl = { workspace = true }
-archivebox = { workspace = true }
+abxbus = { path = "abxbus", editable = true }
+abxpkg = { path = "abxpkg", editable = true }
+abx-plugins = { path = "abx-plugins", editable = true }
+abx-dl = { path = "abx-dl", editable = true }
+archivebox = { path = "archivebox", editable = true }
+
+[tool.pytest.ini_options]
+testpaths = ["README.md", "AGENTS.md", "skills"]
+addopts = ["--codeblocks"]
