@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: cascade-${{ inputs.upstream_package }}-${{ inputs.upstream_version }}
+  group: cascade-${{ inputs.upstream_package }}
   cancel-in-progress: false
 
 jobs:
@@ -157,19 +157,33 @@ jobs:
         working-directory: downstream
         run: |
           set -Eeuo pipefail
-          CURRENT="$(uv run --no-cache --no-project python - <<'PY'
+          STATE="$(uv run --no-cache --no-project python - <<'PY'
           import os
+          import re
           import tomllib
           from pathlib import Path
 
           package_name = os.environ["UPSTREAM_PACKAGE"]
+          released_version = os.environ["UPSTREAM_VERSION"]
           packages = tomllib.loads(Path("uv.lock").read_text())["package"]
-          print(next((package["version"] for package in packages if package["name"] == package_name), ""))
+          current_version = next((package["version"] for package in packages if package["name"] == package_name), "")
+
+          def version_key(version):
+              match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:rc(\d+))?", version)
+              if not match:
+                  raise SystemExit(f"Unsupported locked version: {version}")
+              major, minor, patch, rc = match.groups()
+              return int(major), int(minor), int(patch), rc is None, int(rc or 0)
+
+          if current_version and version_key(current_version) >= version_key(released_version):
+              print("consumed")
+          else:
+              print("needed")
           PY
           )"
-          if [[ "$CURRENT" == "$UPSTREAM_VERSION" ]]; then
+          if [[ "$STATE" == "consumed" ]]; then
             echo "needed=false" >> "$GITHUB_OUTPUT"
-            echo "${UPSTREAM_PACKAGE} ${UPSTREAM_VERSION} is already locked"
+            echo "${UPSTREAM_PACKAGE} ${UPSTREAM_VERSION} is already consumed"
           else
             echo "needed=true" >> "$GITHUB_OUTPUT"
           fi
