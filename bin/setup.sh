@@ -39,10 +39,10 @@ resolve_git_binary() {
 
     export ABXPKG_LIB_DIR="${ABXPKG_LIB_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/archivebox/setup-monorepo-abxpkg}"
     mkdir -p "$ABXPKG_LIB_DIR/env/bin"
-    uv run --no-project --with "abxpkg==$abxpkg_version" abxpkg env \
+    uv run --no-cache --no-project --with "abxpkg==$abxpkg_version" abxpkg env \
         --install \
         --lib="$ABXPKG_LIB_DIR" \
-        --binproviders=env,apt,brew \
+        --binproviders=env,brew,apt \
         git >/dev/null
     GIT_BINARY="$ABXPKG_LIB_DIR/env/bin/git"
     test -L "$GIT_BINARY"
