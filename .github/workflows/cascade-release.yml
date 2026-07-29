@@ -236,7 +236,6 @@ jobs:
           PY
           )"
           ./bin/bump_version.sh "$NEXT_VERSION"
-          uv lock --no-cache --no-sources
 
           LOCKED_VERSION="$(uv run --no-cache --no-project python - <<'PY'
           import os
