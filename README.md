@@ -8,9 +8,12 @@ Umbrella `uv` monorepo environment for local development across:
 - [`abx-dl`](https://github.com/ArchiveBox/abx-dl)
 - [`archivebox`](https://github.com/ArchiveBox/archivebox)
 
-This repo only tracks the monorepo root files. Each package stays in its own Git repository and is cloned next to the root checkout.
+This repo only tracks the monorepo root files. Each package stays in its own Git repository and is cloned inside the root checkout.
 
-The root checkout uses `uv` path sources for local package development, but it is intentionally not a `[tool.uv.workspace]`. Each member repo keeps its own standalone `uv.lock`, and those locks remain authoritative for CI and release. This avoids root workspace discovery changing a member repo's lock when you run `uv lock` inside that member.
+The root checkout is a native `uv` workspace. Its single `uv.lock` and `.venv`
+provide one consistent editable development environment across all five packages.
+Each member repo still keeps its standalone `uv.lock`; that lock remains
+authoritative when the repo is checked out independently for CI and release.
 
 ## Setup
 
@@ -28,16 +31,10 @@ cd monorepo
 ./bin/setup.sh
 ```
 
-`bin/setup.sh` clones missing sibling repos, tries to fast-forward existing checkouts with `git pull --ff-only` while ignoring pull failures caused by local repo state, refreshes `bin/setup_monorepo.sh` hardlinks inside each member repo so they always match the root script, creates the root `.venv`, uses `abxpkg` to project required host build tools into `.venv/abxpkg/env/bin`, and then syncs the root plus every member repo into the shared monorepo env.
+`bin/setup.sh` clones missing member repos, tries to fast-forward existing checkouts with `git pull --ff-only` while ignoring pull failures caused by local repo state, refreshes `bin/setup_monorepo.sh` hardlinks inside each member repo so they always match the root script, creates the root `.venv`, uses `abxpkg` to project required host build tools into `.venv/abxpkg/env/bin`, and then syncs the workspace into the shared monorepo env.
 
-<!--pytest.mark.skip(reason="setup internals already exercised by the ./bin/setup.sh example above")-->
 ```bash
-uv sync --all-extras --no-cache --active
-cd abxbus && UV_PROJECT_ENVIRONMENT=../.venv uv sync --dev --inexact --no-cache --active
-cd ../abxpkg && UV_PROJECT_ENVIRONMENT=../.venv uv sync --dev --inexact --no-cache --active
-cd ../abx-plugins && UV_PROJECT_ENVIRONMENT=../.venv uv sync --dev --inexact --no-cache --active
-cd ../abx-dl && UV_PROJECT_ENVIRONMENT=../.venv uv sync --dev --inexact --no-cache --active
-cd ../archivebox && UV_PROJECT_ENVIRONMENT=../.venv uv sync --dev --all-extras --inexact --no-cache --active
+uv sync --all-packages --all-extras --all-groups --no-cache --active
 ```
 
 Each member repo also gets a `bin/setup_monorepo.sh` hardlink back to the root script. When run from inside a member checkout, it bootstraps `../` into a real `ArchiveBox/monorepo` git checkout first, then continues with the normal sibling repo setup.

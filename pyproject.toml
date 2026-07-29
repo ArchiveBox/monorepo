@@ -21,11 +21,20 @@ dev = [
 package = false
 
 [tool.uv.sources]
-abxbus = { path = "abxbus", editable = true }
-abxpkg = { path = "abxpkg", editable = true }
-abx-plugins = { path = "abx-plugins", editable = true }
-abx-dl = { path = "abx-dl", editable = true }
-archivebox = { path = "archivebox", editable = true }
+abxbus = { workspace = true }
+abxpkg = { workspace = true }
+abx-plugins = { workspace = true }
+abx-dl = { workspace = true }
+archivebox = { workspace = true }
+
+[tool.uv.workspace]
+members = [
+    "abxbus",
+    "abxpkg",
+    "abx-plugins",
+    "abx-dl",
+    "archivebox",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["README.md", "AGENTS.md", "skills"]

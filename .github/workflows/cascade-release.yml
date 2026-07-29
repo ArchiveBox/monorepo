@@ -299,10 +299,8 @@ jobs:
 
           LOCK_ARGS=(uv lock --no-cache --no-sources)
           for requirement in "${REQUIRED_INTERNAL[@]}"; do
-            package="${requirement%%==*}"
             LOCK_ARGS+=(
               --upgrade-package "$requirement"
-              --exclude-newer-package "$package=1 second"
             )
           done
           "${LOCK_ARGS[@]}"
