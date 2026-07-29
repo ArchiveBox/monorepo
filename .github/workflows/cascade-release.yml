@@ -183,6 +183,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Verify exact public upstream release
+        id: public-release
         if: steps.state.outputs.needed == 'true' || steps.edge.outputs.dispatch_repositories != ''
         env:
           GH_TOKEN: ${{ secrets.release_token }}
@@ -215,6 +216,7 @@ jobs:
           print(wheels[0])
           PY
           )"
+          echo "wheel_url=$WHEEL_URL" >> "$GITHUB_OUTPUT"
           uv run --no-cache --isolated --no-project \
             --with "$WHEEL_URL" \
             python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" <<'PY'
@@ -342,6 +344,7 @@ jobs:
           UPSTREAM_REPOSITORY: ${{ steps.edge.outputs.repository }}
           UPSTREAM_TAG_PREFIX: ${{ steps.edge.outputs.tag_prefix }}
           UPSTREAM_VERSION: ${{ inputs.upstream_version }}
+          UPSTREAM_WHEEL_URL: ${{ steps.public-release.outputs.wheel_url }}
         run: |
           set -Eeuo pipefail
           RELEASE_TAG="${UPSTREAM_TAG_PREFIX}${UPSTREAM_VERSION}"
@@ -357,6 +360,7 @@ jobs:
               -f event_type="$DISPATCH_EVENT" \
               -F "client_payload[ref]=$RELEASE_TAG" \
               -F "client_payload[sha]=$RELEASE_SHA" \
-              -F "client_payload[version]=$UPSTREAM_VERSION"
+              -F "client_payload[version]=$UPSTREAM_VERSION" \
+              -F "client_payload[wheel_url]=$UPSTREAM_WHEEL_URL"
             echo "Dispatched ${repository} for ${UPSTREAM_REPOSITORY}@${RELEASE_TAG}"
           done
