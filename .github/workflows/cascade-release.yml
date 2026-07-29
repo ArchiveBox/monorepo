@@ -350,7 +350,8 @@ jobs:
           set -Eeuo pipefail
           RELEASE_TAG="${UPSTREAM_TAG_PREFIX}${UPSTREAM_VERSION}"
           RELEASE_SHA="$("$GIT_BINARY" -C upstream rev-parse HEAD)"
-          REMOTE_SHA="$("$GIT_BINARY" ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" "refs/tags/${RELEASE_TAG}" | cut -f1)"
+          REMOTE_REF="$("$GIT_BINARY" ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" "refs/tags/${RELEASE_TAG}")"
+          REMOTE_SHA="${REMOTE_REF%%[[:space:]]*}"
           test "$REMOTE_SHA" = "$RELEASE_SHA"
           test "$("$GH_BINARY" release view "$RELEASE_TAG" --repo "$UPSTREAM_REPOSITORY" --json tagName --jq .tagName)" = "$RELEASE_TAG"
 
