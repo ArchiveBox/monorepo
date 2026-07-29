@@ -343,7 +343,6 @@ jobs:
           UPSTREAM_REPOSITORY: ${{ steps.edge.outputs.repository }}
           UPSTREAM_TAG_PREFIX: ${{ steps.edge.outputs.tag_prefix }}
           UPSTREAM_VERSION: ${{ inputs.upstream_version }}
-          UPSTREAM_WHEEL_URL: ${{ steps.public-release.outputs.wheel_url }}
         run: |
           set -Eeuo pipefail
           RELEASE_TAG="${UPSTREAM_TAG_PREFIX}${UPSTREAM_VERSION}"
@@ -365,10 +364,7 @@ jobs:
               --method POST \
               -H "X-GitHub-Api-Version: 2026-03-10" \
               -f ref=main \
-              -f "inputs[archivebox_ref]=$RELEASE_TAG" \
-              -f "inputs[archivebox_sha]=$RELEASE_SHA" \
-              -f "inputs[archivebox_version]=$UPSTREAM_VERSION" \
-              -f "inputs[archivebox_wheel_url]=$UPSTREAM_WHEEL_URL")"
+              -f "inputs[archivebox_version]=$UPSTREAM_VERSION")"
             run_id="$(printf '%s' "$response" | "$JQ_BINARY" -er '.workflow_run_id')"
             run_ids+=("$run_id")
             echo "Dispatched ${repository} run ${run_id} for ${UPSTREAM_REPOSITORY}@${RELEASE_TAG}"
