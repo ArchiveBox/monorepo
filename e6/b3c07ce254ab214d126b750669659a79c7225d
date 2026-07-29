@@ -1,0 +1,23 @@
+.github/release-graph.toml
+  s_f8414d52051f83::t_7ef18ead406ec7 6,14,22,30,38
+.github/workflows/cascade-release.yml
+  s_f8414d52051f83::t_5a858a24a12070 275
+  s_f8414d52051f83::t_a72769f351bbfa 162,183-188,191,197-199,206-210
+  s_f8414d52051f83::t_ad5be7be6c4bd9 225,231-233,244-245,261,263-266,268-270,273-274,276-279,307-317,320,322,324-327
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "e6b3c07ce254ab214d126b750669659a79c7225d",
+  "prompts": {},
+  "sessions": {
+    "s_f8414d52051f83": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f73c1-cded-7c63-bb8b-3b3c3e5de67d",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
