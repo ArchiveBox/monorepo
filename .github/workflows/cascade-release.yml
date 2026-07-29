@@ -78,6 +78,15 @@ jobs:
                   print(f"{key}={value}", file=stream)
           PY
 
+      - name: Checkout exact released dependency set
+        if: steps.edge.outputs.downstream_repository != ''
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ${{ steps.edge.outputs.repository }}
+          ref: ${{ format('{0}{1}', steps.edge.outputs.tag_prefix, inputs.upstream_version) }}
+          path: upstream
+          persist-credentials: false
+
       - name: Checkout immediate dependent
         if: steps.edge.outputs.downstream_repository != ''
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -105,8 +114,27 @@ jobs:
 
           package_name = os.environ["UPSTREAM_PACKAGE"]
           released_version = os.environ["UPSTREAM_VERSION"]
-          packages = tomllib.loads(Path("uv.lock").read_text())["package"]
-          current_version = next((package["version"] for package in packages if package["name"] == package_name), "")
+          graph = tomllib.loads(Path("../coordinator/.github/release-graph.toml").read_text())["packages"]
+          package_order = list(graph)
+          released_index = package_order.index(package_name)
+          released_lock = {
+              package["name"]: package["version"]
+              for package in tomllib.loads(Path("../upstream/uv.lock").read_text())["package"]
+          }
+          downstream_lock = {
+              package["name"]: package["version"]
+              for package in tomllib.loads(Path("uv.lock").read_text())["package"]
+          }
+          if released_lock.get(package_name) != released_version:
+              raise SystemExit(
+                  f"Release tag lock has {package_name}=={released_lock.get(package_name)}, "
+                  f"not {released_version}"
+              )
+          required = {
+              name: released_lock[name]
+              for name in package_order[: released_index + 1]
+              if name in released_lock
+          }
 
           def version_key(version):
               match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:rc(\d+))?", version)
@@ -115,7 +143,10 @@ jobs:
               major, minor, patch, rc = match.groups()
               return int(major), int(minor), int(patch), rc is None, int(rc or 0)
 
-          if current_version and version_key(current_version) >= version_key(released_version):
+          if all(
+              name in downstream_lock and version_key(downstream_lock[name]) >= version_key(version)
+              for name, version in required.items()
+          ):
               print("consumed")
           else:
               print("needed")
@@ -160,26 +191,12 @@ jobs:
       - name: Verify exact public upstream release
         if: steps.state.outputs.needed == 'true'
         env:
-          GH_TOKEN: ${{ secrets.release_token }}
-          UPSTREAM_REPOSITORY: ${{ steps.edge.outputs.repository }}
-          UPSTREAM_TAG_PREFIX: ${{ steps.edge.outputs.tag_prefix }}
           UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
           UPSTREAM_VERSION: ${{ inputs.upstream_version }}
         working-directory: downstream
         run: |
           set -Eeuo pipefail
           uv run --no-cache --no-project python -c 'import time; time.sleep(60)'
-          TAG="${UPSTREAM_TAG_PREFIX}${UPSTREAM_VERSION}"
-          TARGET=""
-          while read -r sha _; do
-            TARGET="$sha"
-          done < <("$GIT_BINARY" ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" "refs/tags/${TAG}^{}")
-          if [[ -z "$TARGET" ]]; then
-            while read -r sha _; do
-              TARGET="$sha"
-            done < <("$GIT_BINARY" ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" "refs/tags/${TAG}")
-          fi
-          [[ "$TARGET" =~ ^[0-9a-f]{40}$ ]]
           uv run --no-cache --isolated --no-project \
             --with "${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}" \
             python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" <<'PY'
@@ -194,24 +211,75 @@ jobs:
         env:
           UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
           UPSTREAM_VERSION: ${{ inputs.upstream_version }}
-          UPDATE_MODE: ${{ steps.edge.outputs.update_mode }}
           VERSION_SCHEME: ${{ steps.edge.outputs.version_scheme }}
           UV_NO_CACHE: "1"
         working-directory: downstream
         run: |
           set -Eeuo pipefail
-          case "$UPDATE_MODE" in
-            exact)
-              uv add --no-cache --no-sources --no-sync "${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}"
-              ;;
-            lock)
-              uv lock --no-cache --no-sources --upgrade-package "$UPSTREAM_PACKAGE"
-              ;;
-            *)
-              echo "Unsupported dependency update mode: $UPDATE_MODE" >&2
-              exit 1
-              ;;
-          esac
+          EXACT_REQUIREMENTS=()
+          LOCK_REQUIREMENTS=()
+          while IFS=$'\t' read -r mode requirement; do
+            if [[ "$mode" == "exact" ]]; then
+              EXACT_REQUIREMENTS+=("$requirement")
+            elif [[ "$mode" == "lock" ]]; then
+              LOCK_REQUIREMENTS+=("$requirement")
+            fi
+          done < <(uv run --no-cache --no-project python - <<'PY'
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
+
+          package_name = os.environ["UPSTREAM_PACKAGE"]
+          graph = tomllib.loads(Path("../coordinator/.github/release-graph.toml").read_text())["packages"]
+          package_order = list(graph)
+          released_index = package_order.index(package_name)
+          released_lock = {
+              package["name"]: package["version"]
+              for package in tomllib.loads(Path("../upstream/uv.lock").read_text())["package"]
+          }
+          downstream_lock = {
+              package["name"]: package["version"]
+              for package in tomllib.loads(Path("uv.lock").read_text())["package"]
+          }
+          project = tomllib.loads(Path("pyproject.toml").read_text())["project"]
+
+          def normalized_name(requirement):
+              match = re.match(r"\s*([A-Za-z0-9][A-Za-z0-9._-]*)", requirement)
+              if not match:
+                  raise SystemExit(f"Unsupported dependency requirement: {requirement}")
+              return re.sub(r"[-_.]+", "-", match.group(1)).lower()
+
+          def version_key(version):
+              match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:rc(\d+))?", version)
+              if not match:
+                  raise SystemExit(f"Unsupported locked version: {version}")
+              major, minor, patch, rc = match.groups()
+              return int(major), int(minor), int(patch), rc is None, int(rc or 0)
+
+          direct_dependencies = {
+              normalized_name(requirement)
+              for requirement in project.get("dependencies", [])
+          }
+          for name in package_order[: released_index + 1]:
+              if name not in released_lock:
+                  continue
+              required_version = released_lock[name]
+              current_version = downstream_lock.get(name)
+              if current_version and version_key(current_version) >= version_key(required_version):
+                  continue
+              if name in direct_dependencies:
+                  print(f"exact\t{name}=={required_version}")
+              else:
+                  print(f"lock\t{name}")
+          PY
+          )
+          if (( ${#EXACT_REQUIREMENTS[@]} )); then
+            uv add --no-cache --no-sources --no-sync "${EXACT_REQUIREMENTS[@]}"
+          fi
+          for package in "${LOCK_REQUIREMENTS[@]}"; do
+            uv lock --no-cache --no-sources --upgrade-package "$package"
+          done
 
           NEXT_VERSION="$(uv run --no-cache --no-project python - "$VERSION_SCHEME" <<'PY'
           import re
@@ -238,17 +306,42 @@ jobs:
           )"
           ./bin/bump_version.sh "$NEXT_VERSION"
 
-          LOCKED_VERSION="$(uv run --no-cache --no-project python - <<'PY'
+          uv run --no-cache --no-project python - <<'PY'
           import os
+          import re
           import tomllib
           from pathlib import Path
 
           package_name = os.environ["UPSTREAM_PACKAGE"]
-          packages = tomllib.loads(Path("uv.lock").read_text())["package"]
-          print(next(package["version"] for package in packages if package["name"] == package_name))
+          graph = tomllib.loads(Path("../coordinator/.github/release-graph.toml").read_text())["packages"]
+          package_order = list(graph)
+          released_index = package_order.index(package_name)
+          released_lock = {
+              package["name"]: package["version"]
+              for package in tomllib.loads(Path("../upstream/uv.lock").read_text())["package"]
+          }
+          downstream_lock = {
+              package["name"]: package["version"]
+              for package in tomllib.loads(Path("uv.lock").read_text())["package"]
+          }
+
+          def version_key(version):
+              match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:rc(\d+))?", version)
+              if not match:
+                  raise SystemExit(f"Unsupported locked version: {version}")
+              major, minor, patch, rc = match.groups()
+              return int(major), int(minor), int(patch), rc is None, int(rc or 0)
+
+          for name in package_order[: released_index + 1]:
+              if name not in released_lock:
+                  continue
+              required_version = released_lock[name]
+              current_version = downstream_lock.get(name)
+              if not current_version or version_key(current_version) < version_key(required_version):
+                  raise SystemExit(
+                      f"{name} lock is {current_version or 'missing'}, below required {required_version}"
+                  )
           PY
-          )"
-          test "$LOCKED_VERSION" = "$UPSTREAM_VERSION"
           "$GIT_BINARY" diff --check
 
       - name: Push one normal dependent commit

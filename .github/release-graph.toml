@@ -3,7 +3,6 @@ repository = "ArchiveBox/abxbus"
 tag_prefix = ""
 downstream_repository = "ArchiveBox/abxpkg"
 downstream_branch = "main"
-update_mode = "lock"
 version_scheme = "patch"
 
 [packages.abxpkg]
@@ -11,7 +10,6 @@ repository = "ArchiveBox/abxpkg"
 tag_prefix = "v"
 downstream_repository = "ArchiveBox/abx-plugins"
 downstream_branch = "main"
-update_mode = "exact"
 version_scheme = "patch"
 
 [packages.abx-plugins]
@@ -19,7 +17,6 @@ repository = "ArchiveBox/abx-plugins"
 tag_prefix = "v"
 downstream_repository = "ArchiveBox/abx-dl"
 downstream_branch = "main"
-update_mode = "exact"
 version_scheme = "patch"
 
 [packages.abx-dl]
@@ -27,7 +24,6 @@ repository = "ArchiveBox/abx-dl"
 tag_prefix = "v"
 downstream_repository = "ArchiveBox/ArchiveBox"
 downstream_branch = "dev"
-update_mode = "exact"
 version_scheme = "rc"
 
 [packages.archivebox]
@@ -35,5 +31,4 @@ repository = "ArchiveBox/ArchiveBox"
 tag_prefix = "v"
 downstream_repository = ""
 downstream_branch = ""
-update_mode = ""
 version_scheme = ""
