@@ -1,0 +1,23 @@
+bin/bump.sh
+  s_f8414d52051f83::t_e2b5b95e7a1188 102-111
+  s_f8414d52051f83::t_375fcfcc8a9968 214-215
+  s_f8414d52051f83::t_fa1d52503de9d5 7-18,23-24,26,30-36,39-40,43-47,50-80,83-101,112-119,121-126,128-139,141-144,147-157,159-169,173-178,180-184,186,188-209,212-213,216-232,234-245,247-270,272-287,289-305,309-313,315,317-324,326-327
+README.md
+  s_f8414d52051f83::t_bfcc7d6bd96a4f 74-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "b218b97ea81501f38405458afc34dff183406781",
+  "prompts": {},
+  "sessions": {
+    "s_f8414d52051f83": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f73c1-cded-7c63-bb8b-3b3c3e5de67d",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
