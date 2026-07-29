@@ -88,66 +88,6 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.release_token }}
 
-      - name: Resolve Git through abxpkg
-        if: steps.edge.outputs.downstream_repository != ''
-        env:
-          ABXPKG_LIB_DIR: ${{ runner.temp }}/abx-lib
-        working-directory: downstream
-        run: |
-          set -Eeuo pipefail
-          ABXPKG_VERSION="$(uv run --no-cache --no-project python - <<'PY'
-          import tomllib
-          from pathlib import Path
-
-          packages = tomllib.loads(Path("uv.lock").read_text())["package"]
-          print(next(package["version"] for package in packages if package["name"] == "abxpkg"))
-          PY
-          )"
-          uv run --no-cache --no-project --with "abxpkg==$ABXPKG_VERSION" abxpkg env \
-            --install \
-            --no-cache \
-            --json \
-            --lib="$ABXPKG_LIB_DIR" \
-            --binproviders=env,apt \
-            git >/dev/null
-          binary="$ABXPKG_LIB_DIR/env/bin/git"
-          test -L "$binary"
-          test -x "$binary"
-          {
-            echo "GIT_BINARY=$ABXPKG_LIB_DIR/env/bin/git"
-          } >> "$GITHUB_ENV"
-
-      - name: Verify exact public upstream release
-        if: steps.edge.outputs.downstream_repository != ''
-        env:
-          GH_TOKEN: ${{ secrets.release_token }}
-          UPSTREAM_REPOSITORY: ${{ steps.edge.outputs.repository }}
-          UPSTREAM_TAG_PREFIX: ${{ steps.edge.outputs.tag_prefix }}
-          UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
-          UPSTREAM_VERSION: ${{ inputs.upstream_version }}
-        working-directory: downstream
-        run: |
-          set -Eeuo pipefail
-          TAG="${UPSTREAM_TAG_PREFIX}${UPSTREAM_VERSION}"
-          TARGET=""
-          while read -r sha _; do
-            TARGET="$sha"
-          done < <("$GIT_BINARY" ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" "refs/tags/${TAG}^{}")
-          if [[ -z "$TARGET" ]]; then
-            while read -r sha _; do
-              TARGET="$sha"
-            done < <("$GIT_BINARY" ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" "refs/tags/${TAG}")
-          fi
-          [[ "$TARGET" =~ ^[0-9a-f]{40}$ ]]
-          uv run --no-cache --isolated --no-project \
-            --with "${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}" \
-            python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" <<'PY'
-          import importlib.metadata
-          import sys
-
-          assert importlib.metadata.version(sys.argv[1]) == sys.argv[2]
-          PY
-
       - name: Check whether release is already consumed
         if: steps.edge.outputs.downstream_repository != ''
         id: state
@@ -187,6 +127,67 @@ jobs:
           else
             echo "needed=true" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Resolve Git through abxpkg
+        if: steps.state.outputs.needed == 'true'
+        env:
+          ABXPKG_LIB_DIR: ${{ runner.temp }}/abx-lib
+        working-directory: downstream
+        run: |
+          set -Eeuo pipefail
+          ABXPKG_VERSION="$(uv run --no-cache --no-project python - <<'PY'
+          import tomllib
+          from pathlib import Path
+
+          packages = tomllib.loads(Path("uv.lock").read_text())["package"]
+          print(next(package["version"] for package in packages if package["name"] == "abxpkg"))
+          PY
+          )"
+          uv run --no-cache --no-project --with "abxpkg==$ABXPKG_VERSION" abxpkg env \
+            --install \
+            --no-cache \
+            --json \
+            --lib="$ABXPKG_LIB_DIR" \
+            --binproviders=env,apt \
+            git >/dev/null
+          binary="$ABXPKG_LIB_DIR/env/bin/git"
+          test -L "$binary"
+          test -x "$binary"
+          {
+            echo "GIT_BINARY=$ABXPKG_LIB_DIR/env/bin/git"
+          } >> "$GITHUB_ENV"
+
+      - name: Verify exact public upstream release
+        if: steps.state.outputs.needed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.release_token }}
+          UPSTREAM_REPOSITORY: ${{ steps.edge.outputs.repository }}
+          UPSTREAM_TAG_PREFIX: ${{ steps.edge.outputs.tag_prefix }}
+          UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
+          UPSTREAM_VERSION: ${{ inputs.upstream_version }}
+        working-directory: downstream
+        run: |
+          set -Eeuo pipefail
+          uv run --no-cache --no-project python -c 'import time; time.sleep(60)'
+          TAG="${UPSTREAM_TAG_PREFIX}${UPSTREAM_VERSION}"
+          TARGET=""
+          while read -r sha _; do
+            TARGET="$sha"
+          done < <("$GIT_BINARY" ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" "refs/tags/${TAG}^{}")
+          if [[ -z "$TARGET" ]]; then
+            while read -r sha _; do
+              TARGET="$sha"
+            done < <("$GIT_BINARY" ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" "refs/tags/${TAG}")
+          fi
+          [[ "$TARGET" =~ ^[0-9a-f]{40}$ ]]
+          uv run --no-cache --isolated --no-project \
+            --with "${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}" \
+            python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" <<'PY'
+          import importlib.metadata
+          import sys
+
+          assert importlib.metadata.version(sys.argv[1]) == sys.argv[2]
+          PY
 
       - name: Update dependency and bump dependent version
         if: steps.state.outputs.needed == 'true'
