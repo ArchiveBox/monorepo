@@ -75,11 +75,13 @@ jobs:
           output = Path(os.environ["GITHUB_OUTPUT"])
           with output.open("a") as stream:
               for key, value in edge.items():
+                  if isinstance(value, list):
+                      value = ",".join(value)
                   print(f"{key}={value}", file=stream)
           PY
 
       - name: Checkout exact released dependency set
-        if: steps.edge.outputs.downstream_repository != ''
+        if: steps.edge.outputs.downstream_repository != '' || steps.edge.outputs.dispatch_repositories != ''
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: ${{ steps.edge.outputs.repository }}
@@ -108,7 +110,6 @@ jobs:
           set -Eeuo pipefail
           STATE="$(uv run --no-cache --no-project python - <<'PY'
           import os
-          import re
           import tomllib
           from pathlib import Path
 
@@ -130,23 +131,13 @@ jobs:
                   f"Release tag lock has {package_name}=={released_lock.get(package_name)}, "
                   f"not {released_version}"
               )
-          required = {
-              name: released_lock[name]
-              for name in package_order[: released_index + 1]
-              if name in released_lock
-          }
+          required_names = package_order[: released_index + 1]
+          missing = [name for name in required_names if name not in released_lock]
+          if missing:
+              raise SystemExit(f"Release tag lock is missing internal packages: {', '.join(missing)}")
+          required = {name: released_lock[name] for name in required_names}
 
-          def version_key(version):
-              match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:rc(\d+))?", version)
-              if not match:
-                  raise SystemExit(f"Unsupported locked version: {version}")
-              major, minor, patch, rc = match.groups()
-              return int(major), int(minor), int(patch), rc is None, int(rc or 0)
-
-          if all(
-              name in downstream_lock and version_key(downstream_lock[name]) >= version_key(version)
-              for name, version in required.items()
-          ):
+          if all(downstream_lock.get(name) == version for name, version in required.items()):
               print("consumed")
           else:
               print("needed")
@@ -160,10 +151,10 @@ jobs:
           fi
 
       - name: Resolve release tools through abxpkg
-        if: steps.state.outputs.needed == 'true'
+        if: steps.state.outputs.needed == 'true' || steps.edge.outputs.dispatch_repositories != ''
         env:
           ABXPKG_LIB_DIR: ${{ runner.temp }}/abx-lib
-        working-directory: downstream
+        working-directory: ${{ steps.edge.outputs.downstream_repository != '' && 'downstream' || 'coordinator' }}
         run: |
           set -Eeuo pipefail
           ABXPKG_VERSION="$(uv run --no-cache --no-project python - <<'PY'
@@ -208,8 +199,24 @@ jobs:
             --json tagName \
             --jq .tagName)"
           test "$RELEASE_TAG" = "${UPSTREAM_TAG_PREFIX}${UPSTREAM_VERSION}"
+          WHEEL_URL="$(uv run --no-cache --no-project python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" <<'PY'
+          import json
+          import sys
+          import urllib.request
+
+          package, version = sys.argv[1:]
+          with urllib.request.urlopen(f"https://pypi.org/pypi/{package}/{version}/json", timeout=20) as response:
+              release = json.load(response)
+          if release["info"]["version"] != version:
+              raise SystemExit(f"PyPI returned {release['info']['version']}, not {version}")
+          wheels = [artifact["url"] for artifact in release["urls"] if artifact["packagetype"] == "bdist_wheel"]
+          if len(wheels) != 1:
+              raise SystemExit(f"Expected exactly one public wheel for {package}=={version}, found {len(wheels)}")
+          print(wheels[0])
+          PY
+          )"
           uv run --no-cache --isolated --no-project \
-            --with "${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}" \
+            --with "$WHEEL_URL" \
             python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" <<'PY'
           import importlib.metadata
           import sys
@@ -233,7 +240,6 @@ jobs:
             REQUIRED_INTERNAL+=("$requirement")
           done < <(uv run --no-cache --no-project python - <<'PY'
           import os
-          import re
           import tomllib
           from pathlib import Path
 
@@ -245,29 +251,13 @@ jobs:
               package["name"]: package
               for package in tomllib.loads(Path("../upstream/uv.lock").read_text())["package"]
           }
-          downstream_lock = {
-              package["name"]: package["version"]
-              for package in tomllib.loads(Path("uv.lock").read_text())["package"]
-          }
-
-          def version_key(version):
-              match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:rc(\d+))?", version)
-              if not match:
-                  raise SystemExit(f"Unsupported locked version: {version}")
-              major, minor, patch, rc = match.groups()
-              return int(major), int(minor), int(patch), rc is None, int(rc or 0)
-
           for name in package_order[: released_index + 1]:
               if name not in released_packages:
-                  continue
+                  raise SystemExit(f"Release tag lock is missing internal package: {name}")
               package = released_packages[name]
               if name != package_name and "registry" not in package.get("source", {}):
                   raise SystemExit(f"{name} is not locked from a package registry")
-              required_version = package["version"]
-              current_version = downstream_lock.get(name)
-              if current_version and version_key(current_version) > version_key(required_version):
-                  required_version = current_version
-              print(f"{name}=={required_version}")
+              print(f"{name}=={package['version']}")
           PY
           )
           (( ${#REQUIRED_INTERNAL[@]} ))
@@ -342,3 +332,31 @@ jobs:
           "$GIT_BINARY" add -u
           "$GIT_BINARY" commit -m "Bump for ${UPSTREAM_PACKAGE} ${UPSTREAM_VERSION}"
           "$GIT_BINARY" push origin "HEAD:${DOWNSTREAM_BRANCH}"
+
+      - name: Dispatch configured release dependents
+        if: steps.edge.outputs.dispatch_repositories != ''
+        env:
+          GH_TOKEN: ${{ secrets.release_token }}
+          DISPATCH_REPOSITORIES: ${{ steps.edge.outputs.dispatch_repositories }}
+          DISPATCH_EVENT: ${{ steps.edge.outputs.dispatch_event }}
+          UPSTREAM_REPOSITORY: ${{ steps.edge.outputs.repository }}
+          UPSTREAM_TAG_PREFIX: ${{ steps.edge.outputs.tag_prefix }}
+          UPSTREAM_VERSION: ${{ inputs.upstream_version }}
+        run: |
+          set -Eeuo pipefail
+          RELEASE_TAG="${UPSTREAM_TAG_PREFIX}${UPSTREAM_VERSION}"
+          RELEASE_SHA="$("$GIT_BINARY" -C upstream rev-parse HEAD)"
+          REMOTE_SHA="$("$GIT_BINARY" ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" "refs/tags/${RELEASE_TAG}" | cut -f1)"
+          test "$REMOTE_SHA" = "$RELEASE_SHA"
+          test "$("$GH_BINARY" release view "$RELEASE_TAG" --repo "$UPSTREAM_REPOSITORY" --json tagName --jq .tagName)" = "$RELEASE_TAG"
+
+          IFS=',' read -ra repositories <<< "$DISPATCH_REPOSITORIES"
+          for repository in "${repositories[@]}"; do
+            "$GH_BINARY" api "repos/${repository}/dispatches" \
+              --method POST \
+              -f event_type="$DISPATCH_EVENT" \
+              -F "client_payload[ref]=$RELEASE_TAG" \
+              -F "client_payload[sha]=$RELEASE_SHA" \
+              -F "client_payload[version]=$UPSTREAM_VERSION"
+            echo "Dispatched ${repository} for ${UPSTREAM_REPOSITORY}@${RELEASE_TAG}"
+          done
