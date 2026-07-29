@@ -183,14 +183,14 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Verify exact public upstream release
-        if: steps.state.outputs.needed == 'true'
+        if: steps.state.outputs.needed == 'true' || steps.edge.outputs.dispatch_repositories != ''
         env:
           GH_TOKEN: ${{ secrets.release_token }}
           UPSTREAM_REPOSITORY: ${{ steps.edge.outputs.repository }}
           UPSTREAM_TAG_PREFIX: ${{ steps.edge.outputs.tag_prefix }}
           UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
           UPSTREAM_VERSION: ${{ inputs.upstream_version }}
-        working-directory: downstream
+        working-directory: ${{ steps.edge.outputs.downstream_repository != '' && 'downstream' || 'coordinator' }}
         run: |
           set -Eeuo pipefail
           uv run --no-cache --no-project python -c 'import time; time.sleep(60)'
