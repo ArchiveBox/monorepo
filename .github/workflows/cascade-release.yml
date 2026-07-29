@@ -171,8 +171,8 @@ jobs:
             --json \
             --lib="$ABXPKG_LIB_DIR" \
             --binproviders=env,apt \
-            git gh >/dev/null
-          for name in git gh; do
+            git gh jq >/dev/null
+          for name in git gh jq; do
             binary="$ABXPKG_LIB_DIR/env/bin/$name"
             test -L "$binary"
             test -x "$binary"
@@ -180,6 +180,7 @@ jobs:
           {
             echo "GIT_BINARY=$ABXPKG_LIB_DIR/env/bin/git"
             echo "GH_BINARY=$ABXPKG_LIB_DIR/env/bin/gh"
+            echo "JQ_BINARY=$ABXPKG_LIB_DIR/env/bin/jq"
           } >> "$GITHUB_ENV"
 
       - name: Verify exact public upstream release
@@ -335,12 +336,12 @@ jobs:
           "$GIT_BINARY" commit -m "Bump for ${UPSTREAM_PACKAGE} ${UPSTREAM_VERSION}"
           "$GIT_BINARY" push origin "HEAD:${DOWNSTREAM_BRANCH}"
 
-      - name: Dispatch configured release dependents
+      - name: Dispatch and verify configured release dependents
         if: steps.edge.outputs.dispatch_repositories != ''
         env:
           GH_TOKEN: ${{ secrets.release_token }}
           DISPATCH_REPOSITORIES: ${{ steps.edge.outputs.dispatch_repositories }}
-          DISPATCH_EVENT: ${{ steps.edge.outputs.dispatch_event }}
+          DISPATCH_WORKFLOWS: ${{ steps.edge.outputs.dispatch_workflows }}
           UPSTREAM_REPOSITORY: ${{ steps.edge.outputs.repository }}
           UPSTREAM_TAG_PREFIX: ${{ steps.edge.outputs.tag_prefix }}
           UPSTREAM_VERSION: ${{ inputs.upstream_version }}
@@ -354,13 +355,32 @@ jobs:
           test "$("$GH_BINARY" release view "$RELEASE_TAG" --repo "$UPSTREAM_REPOSITORY" --json tagName --jq .tagName)" = "$RELEASE_TAG"
 
           IFS=',' read -ra repositories <<< "$DISPATCH_REPOSITORIES"
-          for repository in "${repositories[@]}"; do
-            "$GH_BINARY" api "repos/${repository}/dispatches" \
+          IFS=',' read -ra workflows <<< "$DISPATCH_WORKFLOWS"
+          test "${#repositories[@]}" -eq "${#workflows[@]}"
+
+          run_ids=()
+          for index in "${!repositories[@]}"; do
+            repository="${repositories[$index]}"
+            workflow="${workflows[$index]}"
+            response="$("$GH_BINARY" api "repos/${repository}/actions/workflows/${workflow}/dispatches" \
               --method POST \
-              -f event_type="$DISPATCH_EVENT" \
-              -F "client_payload[ref]=$RELEASE_TAG" \
-              -F "client_payload[sha]=$RELEASE_SHA" \
-              -F "client_payload[version]=$UPSTREAM_VERSION" \
-              -F "client_payload[wheel_url]=$UPSTREAM_WHEEL_URL"
-            echo "Dispatched ${repository} for ${UPSTREAM_REPOSITORY}@${RELEASE_TAG}"
+              -H "X-GitHub-Api-Version: 2026-03-10" \
+              -f ref=main \
+              -f "inputs[archivebox_ref]=$RELEASE_TAG" \
+              -f "inputs[archivebox_sha]=$RELEASE_SHA" \
+              -f "inputs[archivebox_version]=$UPSTREAM_VERSION" \
+              -f "inputs[archivebox_wheel_url]=$UPSTREAM_WHEEL_URL")"
+            run_id="$(printf '%s' "$response" | "$JQ_BINARY" -er '.workflow_run_id')"
+            run_ids+=("$run_id")
+            echo "Dispatched ${repository} run ${run_id} for ${UPSTREAM_REPOSITORY}@${RELEASE_TAG}"
           done
+
+          status=0
+          for index in "${!repositories[@]}"; do
+            "$GH_BINARY" run watch "${run_ids[$index]}" \
+              --repo "${repositories[$index]}" \
+              --compact \
+              --exit-status \
+              --interval 10 || status=1
+          done
+          exit "$status"

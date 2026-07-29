@@ -38,4 +38,4 @@ downstream_branch = ""
 update_mode = ""
 version_scheme = ""
 dispatch_repositories = ["ArchiveBox/homebrew-archivebox", "ArchiveBox/debian-archivebox"]
-dispatch_event = "archivebox-release"
+dispatch_workflows = ["update-archivebox-dev.yml", "build.yml"]
