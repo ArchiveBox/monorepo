@@ -71,6 +71,18 @@ cd abxbus
 - `archivebox` develops on `dev`.
 - `abxbus`, `abxpkg`, `abx-plugins`, and `abx-dl` develop on `main`.
 
+## Automatic Releases
+
+Push a versioned change only to the repository you are working in. Its normal CI
+publishes the exact tested release and then calls the central release coordinator
+in this monorepo. The coordinator discovers the immediate dependent from
+`.github/release-graph.toml`, updates and version-bumps that repository once, and
+lets its ordinary push CI continue the chain.
+
+Do not manually push, dispatch, or prepare downstream repositories. Package
+repositories know only their own release identity; the monorepo exclusively owns
+dependency order and downstream repository names.
+
 ## Shared Runtime State
 
 - `abx-plugins`, `abx-dl`, and `archivebox` share `~/.config/abx` and the active XDG cache directory for dynamic runtime dependencies, cached/derived env config, temp files, sockets, and related runtime state.
