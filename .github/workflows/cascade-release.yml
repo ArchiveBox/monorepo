@@ -11,10 +11,6 @@ on:
         description: Exact public release version
         required: true
         type: string
-      upstream_sha:
-        description: Exact commit owned by the release tag
-        required: true
-        type: string
     secrets:
       release_token:
         description: Token allowed to push the immediate dependent repository
@@ -55,7 +51,6 @@ jobs:
         env:
           UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
           UPSTREAM_VERSION: ${{ inputs.upstream_version }}
-          UPSTREAM_SHA: ${{ inputs.upstream_sha }}
         run: |
           set -Eeuo pipefail
           uv run --no-cache --no-project python - <<'PY'
@@ -66,15 +61,11 @@ jobs:
 
           package_name = os.environ["UPSTREAM_PACKAGE"]
           version = os.environ["UPSTREAM_VERSION"]
-          sha = os.environ["UPSTREAM_SHA"]
           graph = tomllib.loads(Path("coordinator/.github/release-graph.toml").read_text())["packages"]
           if package_name not in graph:
               raise SystemExit(f"Unknown release package: {package_name}")
           if not re.fullmatch(r"\d+\.\d+\.\d+(?:rc\d+)?", version):
               raise SystemExit(f"Unsupported release version: {version}")
-          if not re.fullmatch(r"[0-9a-f]{40}", sha):
-              raise SystemExit(f"Invalid release SHA: {sha}")
-
           edge = graph[package_name]
           if edge["repository"].lower() != os.environ["GITHUB_REPOSITORY"].lower():
               raise SystemExit(
@@ -97,7 +88,7 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.release_token }}
 
-      - name: Resolve release tools through abxpkg
+      - name: Resolve Git through abxpkg
         if: steps.edge.outputs.downstream_repository != ''
         env:
           ABXPKG_LIB_DIR: ${{ runner.temp }}/abx-lib
@@ -118,15 +109,12 @@ jobs:
             --json \
             --lib="$ABXPKG_LIB_DIR" \
             --binproviders=env,apt \
-            git gh >/dev/null
-          for name in git gh; do
-            binary="$ABXPKG_LIB_DIR/env/bin/$name"
-            test -L "$binary"
-            test -x "$binary"
-          done
+            git >/dev/null
+          binary="$ABXPKG_LIB_DIR/env/bin/git"
+          test -L "$binary"
+          test -x "$binary"
           {
             echo "GIT_BINARY=$ABXPKG_LIB_DIR/env/bin/git"
-            echo "GH_BINARY=$ABXPKG_LIB_DIR/env/bin/gh"
           } >> "$GITHUB_ENV"
 
       - name: Verify exact public upstream release
@@ -137,13 +125,20 @@ jobs:
           UPSTREAM_TAG_PREFIX: ${{ steps.edge.outputs.tag_prefix }}
           UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
           UPSTREAM_VERSION: ${{ inputs.upstream_version }}
-          UPSTREAM_SHA: ${{ inputs.upstream_sha }}
         working-directory: downstream
         run: |
           set -Eeuo pipefail
           TAG="${UPSTREAM_TAG_PREFIX}${UPSTREAM_VERSION}"
-          TARGET="$("$GH_BINARY" release view "$TAG" --repo "$UPSTREAM_REPOSITORY" --json targetCommitish --jq .targetCommitish)"
-          test "$TARGET" = "$UPSTREAM_SHA"
+          TARGET=""
+          while read -r sha _; do
+            TARGET="$sha"
+          done < <("$GIT_BINARY" ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" "refs/tags/${TAG}^{}")
+          if [[ -z "$TARGET" ]]; then
+            while read -r sha _; do
+              TARGET="$sha"
+            done < <("$GIT_BINARY" ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" "refs/tags/${TAG}")
+          fi
+          [[ "$TARGET" =~ ^[0-9a-f]{40}$ ]]
           uv run --no-cache --isolated --no-project \
             --with "${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}" \
             python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" <<'PY'
