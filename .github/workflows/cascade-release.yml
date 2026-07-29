@@ -154,14 +154,13 @@ jobs:
         if: steps.state.outputs.needed == 'true' || steps.edge.outputs.dispatch_repositories != ''
         env:
           ABXPKG_LIB_DIR: ${{ runner.temp }}/abx-lib
-        working-directory: ${{ steps.edge.outputs.downstream_repository != '' && 'downstream' || 'coordinator' }}
         run: |
           set -Eeuo pipefail
           ABXPKG_VERSION="$(uv run --no-cache --no-project python - <<'PY'
           import tomllib
           from pathlib import Path
 
-          packages = tomllib.loads(Path("uv.lock").read_text())["package"]
+          packages = tomllib.loads(Path("upstream/uv.lock").read_text())["package"]
           print(next(package["version"] for package in packages if package["name"] == "abxpkg"))
           PY
           )"
