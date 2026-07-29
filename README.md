@@ -10,10 +10,11 @@ Umbrella `uv` monorepo environment for local development across:
 
 This repo only tracks the monorepo root files. Each package stays in its own Git repository and is cloned inside the root checkout.
 
-The root checkout is a native `uv` workspace. Its single `uv.lock` and `.venv`
-provide one consistent editable development environment across all five packages.
-Each member repo still keeps its standalone `uv.lock`; that lock remains
-authoritative when the repo is checked out independently for CI and release.
+The root checkout is a native `uv` workspace. Its generated local `uv.lock`
+and `.venv` provide one consistent editable development environment across all
+five packages. The root lock is intentionally ignored because independently
+released member versions change continuously. Each member repo's committed
+standalone `uv.lock` remains authoritative for CI and release.
 
 ## Setup
 
