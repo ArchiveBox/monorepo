@@ -71,29 +71,6 @@ cd abxbus
 - `archivebox` develops on `dev`.
 - `abxbus`, `abxpkg`, `abx-plugins`, and `abx-dl` develop on `main`.
 
-## Release Train
-
-Each member repository tests and publishes its own exact CI-built artifacts. The
-monorepo release train only sequences already-committed version bumps so a
-downstream repository is never pushed before its dependency is publicly usable:
-
-`abxbus` → `abxpkg` → `abx-plugins` → `abx-dl` → `archivebox`
-
-Commit the version, dependency pin, and lockfile updates in every affected
-repository, then run the train from the earliest changed member. Omitting the
-member name auto-detects the earliest checkout ahead of its release branch.
-
-<!--pytest.mark.skip(reason="publishes committed releases to GitHub, PyPI, and Docker")-->
-```bash
-./bin/bump.sh abxpkg
-```
-
-The command requires clean member checkouts on their canonical branches,
-pushes them in dependency order, watches the exact-SHA CI and release workflows,
-waits 60 seconds for public index propagation, and verifies each release through
-its normal installed CLI or import surface. `abx-dl` and `archivebox` releases
-also require their versioned multiarch Docker images to run successfully.
-
 ## Shared Runtime State
 
 - `abx-plugins`, `abx-dl`, and `archivebox` share `~/.config/abx` and the active XDG cache directory for dynamic runtime dependencies, cached/derived env config, temp files, sockets, and related runtime state.

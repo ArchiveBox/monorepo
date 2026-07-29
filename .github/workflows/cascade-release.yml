@@ -1,0 +1,258 @@
+name: Cascade verified release
+
+on:
+  workflow_call:
+    inputs:
+      upstream_package:
+        description: Released Python distribution name
+        required: true
+        type: string
+      upstream_version:
+        description: Exact public release version
+        required: true
+        type: string
+      upstream_sha:
+        description: Exact commit owned by the release tag
+        required: true
+        type: string
+    secrets:
+      release_token:
+        description: Token allowed to push the immediate dependent repository
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cascade-${{ inputs.upstream_package }}-${{ inputs.upstream_version }}
+  cancel-in-progress: false
+
+jobs:
+  cascade:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout release graph
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ArchiveBox/monorepo
+          ref: main
+          path: coordinator
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.3"
+          enable-cache: false
+
+      - name: Resolve dependency edge
+        id: edge
+        env:
+          UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
+          UPSTREAM_VERSION: ${{ inputs.upstream_version }}
+          UPSTREAM_SHA: ${{ inputs.upstream_sha }}
+        run: |
+          set -Eeuo pipefail
+          uv run --no-cache --no-project python - <<'PY'
+          import os
+          import re
+          import tomllib
+          from pathlib import Path
+
+          package_name = os.environ["UPSTREAM_PACKAGE"]
+          version = os.environ["UPSTREAM_VERSION"]
+          sha = os.environ["UPSTREAM_SHA"]
+          graph = tomllib.loads(Path("coordinator/.github/release-graph.toml").read_text())["packages"]
+          if package_name not in graph:
+              raise SystemExit(f"Unknown release package: {package_name}")
+          if not re.fullmatch(r"\d+\.\d+\.\d+(?:rc\d+)?", version):
+              raise SystemExit(f"Unsupported release version: {version}")
+          if not re.fullmatch(r"[0-9a-f]{40}", sha):
+              raise SystemExit(f"Invalid release SHA: {sha}")
+
+          edge = graph[package_name]
+          if edge["repository"].lower() != os.environ["GITHUB_REPOSITORY"].lower():
+              raise SystemExit(
+                  f"{package_name} releases must originate from {edge['repository']}, "
+                  f"not {os.environ['GITHUB_REPOSITORY']}"
+              )
+          output = Path(os.environ["GITHUB_OUTPUT"])
+          with output.open("a") as stream:
+              for key, value in edge.items():
+                  print(f"{key}={value}", file=stream)
+          PY
+
+      - name: Checkout immediate dependent
+        if: steps.edge.outputs.downstream_repository != ''
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ${{ steps.edge.outputs.downstream_repository }}
+          ref: ${{ steps.edge.outputs.downstream_branch }}
+          path: downstream
+          fetch-depth: 0
+          token: ${{ secrets.release_token }}
+
+      - name: Resolve release tools through abxpkg
+        if: steps.edge.outputs.downstream_repository != ''
+        env:
+          ABXPKG_LIB_DIR: ${{ runner.temp }}/abx-lib
+        working-directory: downstream
+        run: |
+          set -Eeuo pipefail
+          ABXPKG_VERSION="$(uv run --no-cache --no-project python - <<'PY'
+          import tomllib
+          from pathlib import Path
+
+          packages = tomllib.loads(Path("uv.lock").read_text())["package"]
+          print(next(package["version"] for package in packages if package["name"] == "abxpkg"))
+          PY
+          )"
+          uv run --no-cache --no-project --with "abxpkg==$ABXPKG_VERSION" abxpkg env \
+            --install \
+            --no-cache \
+            --json \
+            --lib="$ABXPKG_LIB_DIR" \
+            --binproviders=env,apt \
+            git gh >/dev/null
+          for name in git gh; do
+            binary="$ABXPKG_LIB_DIR/env/bin/$name"
+            test -L "$binary"
+            test -x "$binary"
+          done
+          {
+            echo "GIT_BINARY=$ABXPKG_LIB_DIR/env/bin/git"
+            echo "GH_BINARY=$ABXPKG_LIB_DIR/env/bin/gh"
+          } >> "$GITHUB_ENV"
+
+      - name: Verify exact public upstream release
+        if: steps.edge.outputs.downstream_repository != ''
+        env:
+          GH_TOKEN: ${{ secrets.release_token }}
+          UPSTREAM_REPOSITORY: ${{ steps.edge.outputs.repository }}
+          UPSTREAM_TAG_PREFIX: ${{ steps.edge.outputs.tag_prefix }}
+          UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
+          UPSTREAM_VERSION: ${{ inputs.upstream_version }}
+          UPSTREAM_SHA: ${{ inputs.upstream_sha }}
+        working-directory: downstream
+        run: |
+          set -Eeuo pipefail
+          TAG="${UPSTREAM_TAG_PREFIX}${UPSTREAM_VERSION}"
+          TARGET="$("$GH_BINARY" release view "$TAG" --repo "$UPSTREAM_REPOSITORY" --json targetCommitish --jq .targetCommitish)"
+          test "$TARGET" = "$UPSTREAM_SHA"
+          uv run --no-cache --isolated --no-project \
+            --with "${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}" \
+            python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" <<'PY'
+          import importlib.metadata
+          import sys
+
+          assert importlib.metadata.version(sys.argv[1]) == sys.argv[2]
+          PY
+
+      - name: Check whether release is already consumed
+        if: steps.edge.outputs.downstream_repository != ''
+        id: state
+        env:
+          UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
+          UPSTREAM_VERSION: ${{ inputs.upstream_version }}
+        working-directory: downstream
+        run: |
+          set -Eeuo pipefail
+          CURRENT="$(uv run --no-cache --no-project python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          package_name = os.environ["UPSTREAM_PACKAGE"]
+          packages = tomllib.loads(Path("uv.lock").read_text())["package"]
+          print(next((package["version"] for package in packages if package["name"] == package_name), ""))
+          PY
+          )"
+          if [[ "$CURRENT" == "$UPSTREAM_VERSION" ]]; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "${UPSTREAM_PACKAGE} ${UPSTREAM_VERSION} is already locked"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update dependency and bump dependent version
+        if: steps.state.outputs.needed == 'true'
+        env:
+          UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
+          UPSTREAM_VERSION: ${{ inputs.upstream_version }}
+          UPDATE_MODE: ${{ steps.edge.outputs.update_mode }}
+          VERSION_SCHEME: ${{ steps.edge.outputs.version_scheme }}
+          UV_NO_CACHE: "1"
+        working-directory: downstream
+        run: |
+          set -Eeuo pipefail
+          case "$UPDATE_MODE" in
+            exact)
+              uv add --no-cache --no-sources --no-sync "${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}"
+              ;;
+            lock)
+              uv lock --no-cache --no-sources --upgrade-package "$UPSTREAM_PACKAGE"
+              ;;
+            *)
+              echo "Unsupported dependency update mode: $UPDATE_MODE" >&2
+              exit 1
+              ;;
+          esac
+
+          NEXT_VERSION="$(uv run --no-cache --no-project python - "$VERSION_SCHEME" <<'PY'
+          import re
+          import sys
+          import tomllib
+
+          with open("pyproject.toml", "rb") as stream:
+              current = tomllib.load(stream)["project"]["version"]
+          match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:rc(\d+))?", current)
+          if not match:
+              raise SystemExit(f"Unsupported current version: {current}")
+          major, minor, patch, rc = match.groups()
+          if sys.argv[1] == "patch":
+              if rc is not None:
+                  raise SystemExit(f"Cannot patch-bump prerelease version: {current}")
+              print(f"{major}.{minor}.{int(patch) + 1}")
+          elif sys.argv[1] == "rc":
+              if rc is None:
+                  raise SystemExit(f"Cannot rc-bump stable version: {current}")
+              print(f"{major}.{minor}.{patch}rc{int(rc) + 1}")
+          else:
+              raise SystemExit(f"Unsupported version scheme: {sys.argv[1]}")
+          PY
+          )"
+          ./bin/bump_version.sh "$NEXT_VERSION"
+          uv lock --no-cache --no-sources
+
+          LOCKED_VERSION="$(uv run --no-cache --no-project python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          package_name = os.environ["UPSTREAM_PACKAGE"]
+          packages = tomllib.loads(Path("uv.lock").read_text())["package"]
+          print(next(package["version"] for package in packages if package["name"] == package_name))
+          PY
+          )"
+          test "$LOCKED_VERSION" = "$UPSTREAM_VERSION"
+          "$GIT_BINARY" diff --check
+
+      - name: Push one normal dependent commit
+        if: steps.state.outputs.needed == 'true'
+        env:
+          UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
+          UPSTREAM_VERSION: ${{ inputs.upstream_version }}
+          DOWNSTREAM_BRANCH: ${{ steps.edge.outputs.downstream_branch }}
+        working-directory: downstream
+        run: |
+          set -Eeuo pipefail
+          "$GIT_BINARY" config user.name "ArchiveBox Release Bot"
+          "$GIT_BINARY" config user.email "release-bot@archivebox.io"
+          "$GIT_BINARY" add -u
+          "$GIT_BINARY" commit -m "Bump for ${UPSTREAM_PACKAGE} ${UPSTREAM_VERSION}"
+          "$GIT_BINARY" push origin "HEAD:${DOWNSTREAM_BRANCH}"
