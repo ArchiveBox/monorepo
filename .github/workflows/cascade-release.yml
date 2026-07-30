@@ -267,8 +267,10 @@ jobs:
           PY
           )
           (( ${#REQUIRED_INTERNAL[@]} ))
+          PYPI_INDEX_URL="https://pypi.org/simple/?release=${UPSTREAM_PACKAGE}-${UPSTREAM_VERSION}"
           if [[ "$UPDATE_MODE" == "exact" ]]; then
             uv add --no-cache --frozen \
+              --index-url "$PYPI_INDEX_URL" \
               "${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}"
           elif [[ "$UPDATE_MODE" != "lock" ]]; then
             echo "Unsupported dependency update mode: $UPDATE_MODE" >&2
@@ -298,15 +300,27 @@ jobs:
               raise SystemExit(f"Unsupported version scheme: {sys.argv[1]}")
           PY
           )"
-          ./bin/bump_version.sh "$NEXT_VERSION"
+          UV_INDEX_URL="$PYPI_INDEX_URL" ./bin/bump_version.sh "$NEXT_VERSION"
 
-          LOCK_ARGS=(uv lock --no-cache --no-sources)
+          LOCK_ARGS=(uv lock --no-cache --no-sources --index-url "$PYPI_INDEX_URL")
           for requirement in "${REQUIRED_INTERNAL[@]}"; do
             LOCK_ARGS+=(
               --upgrade-package "$requirement"
             )
           done
           "${LOCK_ARGS[@]}"
+          uv run --no-cache --no-project python - "$PYPI_INDEX_URL" <<'PY'
+          import sys
+          from pathlib import Path
+
+          path = Path("uv.lock")
+          text = path.read_text()
+          updated = text.replace(sys.argv[1], "https://pypi.org/simple")
+          if updated == text:
+              raise SystemExit("Release-specific PyPI index was not recorded in uv.lock")
+          path.write_text(updated)
+          PY
+          uv lock --check --no-cache --no-sources
           uv run --no-cache --no-project python - "${REQUIRED_INTERNAL[@]}" <<'PY'
           import sys
           import tomllib
