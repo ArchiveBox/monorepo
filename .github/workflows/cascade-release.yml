@@ -122,20 +122,22 @@ jobs:
               package["name"]: package["version"]
               for package in tomllib.loads(Path("../upstream/uv.lock").read_text())["package"]
           }
+          released_metadata = tomllib.loads(Path("../upstream/pyproject.toml").read_text())["project"]
           downstream_lock = {
               package["name"]: package["version"]
               for package in tomllib.loads(Path("uv.lock").read_text())["package"]
           }
-          if released_lock.get(package_name) != released_version:
+          if released_metadata.get("name") != package_name or released_metadata.get("version") != released_version:
               raise SystemExit(
-                  f"Release tag lock has {package_name}=={released_lock.get(package_name)}, "
-                  f"not {released_version}"
+                  f"Release tag metadata has {released_metadata.get('name')}=={released_metadata.get('version')}, "
+                  f"not {package_name}=={released_version}"
               )
-          required_names = package_order[: released_index + 1]
+          required_names = package_order[:released_index]
           missing = [name for name in required_names if name not in released_lock]
           if missing:
               raise SystemExit(f"Release tag lock is missing internal packages: {', '.join(missing)}")
           required = {name: released_lock[name] for name in required_names}
+          required[package_name] = released_version
 
           if all(downstream_lock.get(name) == version for name, version in required.items()):
               print("consumed")
@@ -246,6 +248,7 @@ jobs:
           from pathlib import Path
 
           package_name = os.environ["UPSTREAM_PACKAGE"]
+          released_version = os.environ["UPSTREAM_VERSION"]
           graph = tomllib.loads(Path("../coordinator/.github/release-graph.toml").read_text())["packages"]
           package_order = list(graph)
           released_index = package_order.index(package_name)
@@ -253,13 +256,14 @@ jobs:
               package["name"]: package
               for package in tomllib.loads(Path("../upstream/uv.lock").read_text())["package"]
           }
-          for name in package_order[: released_index + 1]:
+          for name in package_order[:released_index]:
               if name not in released_packages:
                   raise SystemExit(f"Release tag lock is missing internal package: {name}")
               package = released_packages[name]
-              if name != package_name and "registry" not in package.get("source", {}):
+              if "registry" not in package.get("source", {}):
                   raise SystemExit(f"{name} is not locked from a package registry")
               print(f"{name}=={package['version']}")
+          print(f"{package_name}=={released_version}")
           PY
           )
           (( ${#REQUIRED_INTERNAL[@]} ))
