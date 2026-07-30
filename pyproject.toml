@@ -19,6 +19,13 @@ dev = [
 
 [tool.uv]
 package = false
+override-dependencies = [
+    "abxbus",
+    "abxpkg",
+    "abx-plugins",
+    "abx-dl",
+    "archivebox",
+]
 
 [tool.uv.sources]
 abxbus = { path = "abxbus", editable = true }
