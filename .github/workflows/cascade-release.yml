@@ -202,30 +202,70 @@ jobs:
             --json tagName \
             --jq .tagName)"
           test "$RELEASE_TAG" = "${UPSTREAM_TAG_PREFIX}${UPSTREAM_VERSION}"
-          WHEEL_URL="$(uv run --no-cache --no-project python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" <<'PY'
+          mapfile -t PUBLIC_ARTIFACT < <(
+            uv run --no-cache --no-project python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" <<'PY'
+          import hashlib
           import json
+          import os
           import sys
+          import urllib.parse
           import urllib.request
+          from pathlib import Path
 
           package, version = sys.argv[1:]
           with urllib.request.urlopen(f"https://pypi.org/pypi/{package}/{version}/json", timeout=20) as response:
               release = json.load(response)
           if release["info"]["version"] != version:
               raise SystemExit(f"PyPI returned {release['info']['version']}, not {version}")
-          wheels = [artifact["url"] for artifact in release["urls"] if artifact["packagetype"] == "bdist_wheel"]
+          wheels = [artifact for artifact in release["urls"] if artifact["packagetype"] == "bdist_wheel"]
+          sdists = [artifact for artifact in release["urls"] if artifact["packagetype"] == "sdist"]
           if len(wheels) != 1:
               raise SystemExit(f"Expected exactly one public wheel for {package}=={version}, found {len(wheels)}")
-          print(wheels[0])
+          if len(sdists) != 1:
+              raise SystemExit(f"Expected exactly one public sdist for {package}=={version}, found {len(sdists)}")
+
+          wheel = wheels[0]
+          release_dir = Path(os.environ["RUNNER_TEMP"]) / f"public-release-{package}-{version}"
+          release_dir.mkdir()
+          wheel_path = release_dir / Path(urllib.parse.urlparse(wheel["url"]).path).name
+          with urllib.request.urlopen(wheel["url"], timeout=30) as response:
+              wheel_bytes = response.read()
+          wheel_hash = hashlib.sha256(wheel_bytes).hexdigest()
+          if wheel_hash != wheel["digests"]["sha256"]:
+              raise SystemExit(f"Downloaded wheel hash is {wheel_hash}, not {wheel['digests']['sha256']}")
+          wheel_path.write_bytes(wheel_bytes)
+          (release_dir / "release.json").write_text(json.dumps(release))
+
+          print(release_dir)
+          print(wheel_path)
           PY
-          )"
-          echo "wheel_url=$WHEEL_URL" >> "$GITHUB_OUTPUT"
+          )
+          test "${#PUBLIC_ARTIFACT[@]}" -eq 2
+          WHEEL_DIR="${PUBLIC_ARTIFACT[0]}"
+          WHEEL_PATH="${PUBLIC_ARTIFACT[1]}"
+          echo "wheel_dir=$WHEEL_DIR" >> "$GITHUB_OUTPUT"
           uv run --no-cache --isolated --no-project \
-            --with "$WHEEL_URL" \
+            --with "$WHEEL_PATH" \
             python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" <<'PY'
           import importlib.metadata
+          import re
           import sys
 
-          assert importlib.metadata.version(sys.argv[1]) == sys.argv[2]
+          package_name, package_version = sys.argv[1:]
+          normalized_name = re.sub(r"[-_.]+", "-", package_name).lower()
+          distributions = [
+              distribution
+              for distribution in importlib.metadata.distributions()
+              if re.sub(r"[-_.]+", "-", distribution.metadata["Name"]).lower() == normalized_name
+          ]
+          if len(distributions) != 1:
+              raise SystemExit(
+                  f"Expected one installed {package_name} distribution, found {len(distributions)}"
+              )
+          if distributions[0].version != package_version:
+              raise SystemExit(
+                  f"Installed {package_name} is {distributions[0].version}, not {package_version}"
+              )
           PY
 
       - name: Update dependency and bump dependent version
@@ -235,6 +275,7 @@ jobs:
           UPSTREAM_VERSION: ${{ inputs.upstream_version }}
           UPDATE_MODE: ${{ steps.edge.outputs.update_mode }}
           VERSION_SCHEME: ${{ steps.edge.outputs.version_scheme }}
+          WHEEL_DIR: ${{ steps.public-release.outputs.wheel_dir }}
           UV_NO_CACHE: "1"
         working-directory: downstream
         run: |
@@ -267,10 +308,8 @@ jobs:
           PY
           )
           (( ${#REQUIRED_INTERNAL[@]} ))
-          PYPI_INDEX_URL="https://pypi.org/simple/?release=${UPSTREAM_PACKAGE}-${UPSTREAM_VERSION}"
           if [[ "$UPDATE_MODE" == "exact" ]]; then
             uv add --no-cache --frozen \
-              --index-url "$PYPI_INDEX_URL" \
               "${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}"
           elif [[ "$UPDATE_MODE" != "lock" ]]; then
             echo "Unsupported dependency update mode: $UPDATE_MODE" >&2
@@ -300,25 +339,71 @@ jobs:
               raise SystemExit(f"Unsupported version scheme: {sys.argv[1]}")
           PY
           )"
-          UV_INDEX_URL="$PYPI_INDEX_URL" ./bin/bump_version.sh "$NEXT_VERSION"
+          UV_FIND_LINKS="$WHEEL_DIR" ./bin/bump_version.sh "$NEXT_VERSION"
 
-          LOCK_ARGS=(uv lock --no-cache --no-sources --index-url "$PYPI_INDEX_URL")
+          LOCK_ARGS=(uv lock --no-cache --no-sources --find-links "$WHEEL_DIR")
           for requirement in "${REQUIRED_INTERNAL[@]}"; do
             LOCK_ARGS+=(
               --upgrade-package "$requirement"
             )
           done
           "${LOCK_ARGS[@]}"
-          uv run --no-cache --no-project python - "$PYPI_INDEX_URL" <<'PY'
+          uv run --no-cache --no-project python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" <<'PY'
+          import json
+          import os
+          import re
           import sys
           from pathlib import Path
 
+          package_name, package_version = sys.argv[1:]
+          release = json.loads((Path(os.environ["WHEEL_DIR"]) / "release.json").read_text())
+          wheels = [artifact for artifact in release["urls"] if artifact["packagetype"] == "bdist_wheel"]
+          sdists = [artifact for artifact in release["urls"] if artifact["packagetype"] == "sdist"]
+          if len(wheels) != 1 or len(sdists) != 1:
+              raise SystemExit(
+                  f"Expected one wheel and one sdist for {package_name}=={package_version}, "
+                  f"found {len(wheels)} wheels and {len(sdists)} sdists"
+              )
+
+          def artifact_line(artifact):
+              return (
+                  f'{{ url = "{artifact["url"]}", hash = "sha256:{artifact["digests"]["sha256"]}", '
+                  f'size = {artifact["size"]}, upload-time = "{artifact["upload_time_iso_8601"]}" }}'
+              )
+
           path = Path("uv.lock")
           text = path.read_text()
-          updated = text.replace(sys.argv[1], "https://pypi.org/simple")
-          if updated == text:
-              raise SystemExit("Release-specific PyPI index was not recorded in uv.lock")
-          path.write_text(updated)
+          package_pattern = re.compile(
+              rf'(?ms)^\[\[package\]\]\n'
+              rf'name = "{re.escape(package_name)}"\n'
+              rf'version = "{re.escape(package_version)}"\n'
+              rf'.*?(?=^\[\[package\]\]|\Z)'
+          )
+          matches = list(package_pattern.finditer(text))
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"Expected one lock entry for {package_name}=={package_version}, found {len(matches)}"
+              )
+          match = matches[0]
+          package_block = match.group(0)
+          package_block, source_count = re.subn(
+              r'^source = \{.*\}$',
+              'source = { registry = "https://pypi.org/simple" }',
+              package_block,
+              count=1,
+              flags=re.MULTILINE,
+          )
+          if source_count != 1:
+              raise SystemExit(f"Missing source for {package_name}=={package_version}")
+          package_block = re.sub(r'^sdist = \{.*\}\n', '', package_block, flags=re.MULTILINE)
+          package_block = re.sub(r'^wheels = \[\n(?:    .*\n)*\]\n', '', package_block, flags=re.MULTILINE)
+          package_block = package_block.rstrip() + (
+              f'\nsdist = {artifact_line(sdists[0])}\n'
+              'wheels = [\n'
+              f'    {artifact_line(wheels[0])},\n'
+              ']\n\n'
+          )
+          path.write_text(text[:match.start()] + package_block + text[match.end():])
           PY
           uv lock --check --no-cache --no-sources
           uv run --no-cache --no-project python - "${REQUIRED_INTERNAL[@]}" <<'PY'
