@@ -10,11 +10,12 @@ Umbrella `uv` monorepo environment for local development across:
 
 This repo only tracks the monorepo root files. Each package stays in its own Git repository and is cloned inside the root checkout.
 
-The root checkout is a native `uv` workspace. Its generated local `uv.lock`
-and `.venv` provide one consistent editable development environment across all
-five packages. The root lock is intentionally ignored because independently
-released member versions change continuously. Each member repo's committed
-standalone `uv.lock` remains authoritative for CI and release.
+The root checkout is a `uv` project with editable path dependencies on all five
+packages. Its generated local `uv.lock` and `.venv` provide one consistent
+development environment, while each nested repo remains an independent `uv`
+project whose committed `uv.lock` is authoritative for CI and release. The root
+lock is intentionally ignored because independently released versions change
+continuously.
 
 ## Setup
 
@@ -32,10 +33,10 @@ cd monorepo
 ./bin/setup.sh
 ```
 
-`bin/setup.sh` clones missing member repos, tries to fast-forward existing checkouts with `git pull --ff-only` while ignoring pull failures caused by local repo state, refreshes `bin/setup_monorepo.sh` hardlinks inside each member repo so they always match the root script, creates the root `.venv`, uses `abxpkg` to project required host build tools into `.venv/abxpkg/env/bin`, and then syncs the workspace into the shared monorepo env.
+`bin/setup.sh` clones missing member repos, tries to fast-forward existing checkouts with `git pull --ff-only` while ignoring pull failures caused by local repo state, refreshes `bin/setup_monorepo.sh` hardlinks inside each member repo so they always match the root script, creates the root `.venv`, uses `abxpkg` to project required host build tools into `.venv/abxpkg/env/bin`, and then syncs the editable packages into the shared monorepo env.
 
 ```bash
-uv sync --all-packages --all-extras --all-groups --no-cache --active
+uv sync --all-extras --all-groups --no-cache --active
 ```
 
 Each member repo also gets a `bin/setup_monorepo.sh` hardlink back to the root script. When run from inside a member checkout, it bootstraps `../` into a real `ArchiveBox/monorepo` git checkout first, then continues with the normal sibling repo setup.

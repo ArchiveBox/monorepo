@@ -217,7 +217,7 @@ bootstrap_build_dependencies() {
 }
 
 sync_workspace() {
-    uv sync --all-packages --all-extras --all-groups --no-cache --active
+    uv sync --all-extras --all-groups --no-cache --active
 }
 
 ensure_setup_link() {

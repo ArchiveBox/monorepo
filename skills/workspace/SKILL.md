@@ -23,7 +23,7 @@ Use this skill when a task spans multiple repos in `/Users/squash/Local/Code/arc
 ## Development Setup
 
 ```bash
-uv sync --all-packages --all-extras --all-groups --no-cache --active
+uv sync --all-extras --all-groups --no-cache --active
 ```
 
 ## User-Facing Setup

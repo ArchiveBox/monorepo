@@ -27,10 +27,10 @@ This workspace contains the ArchiveBox development repos. Keep `archivebox` on `
 
 ## Workspace Setup
 
-Run the native workspace setup once from the monorepo root:
+Run the shared editable environment setup once from the monorepo root:
 
 ```bash
-uv sync --all-packages --all-extras --all-groups --no-cache --active
+uv sync --all-extras --all-groups --no-cache --active
 ```
 
 For package wrapper repos, read their `README.md` and use the repo scripts:
