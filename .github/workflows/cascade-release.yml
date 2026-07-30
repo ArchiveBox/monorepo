@@ -427,6 +427,7 @@ jobs:
           UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
           UPSTREAM_VERSION: ${{ inputs.upstream_version }}
           DOWNSTREAM_BRANCH: ${{ steps.edge.outputs.downstream_branch }}
+          UPDATE_MODE: ${{ steps.edge.outputs.update_mode }}
         working-directory: downstream
         run: |
           set -Eeuo pipefail
@@ -434,6 +435,50 @@ jobs:
           "$GIT_BINARY" config user.email "release-bot@archivebox.io"
           "$GIT_BINARY" add -u
           "$GIT_BINARY" commit -m "Bump for ${UPSTREAM_PACKAGE} ${UPSTREAM_VERSION}"
+          if "$GIT_BINARY" push origin "HEAD:${DOWNSTREAM_BRANCH}"; then
+            exit 0
+          fi
+
+          "$GIT_BINARY" fetch origin "$DOWNSTREAM_BRANCH"
+          if uv run --no-cache --no-project python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" "$UPDATE_MODE" "origin/$DOWNSTREAM_BRANCH" <<'PY'
+          import os
+          import re
+          import subprocess
+          import sys
+          import tomllib
+
+          package_name, package_version, update_mode, ref = sys.argv[1:]
+
+          def git_show(path: str) -> str:
+              return subprocess.check_output([os.environ["GIT_BINARY"], "show", f"{ref}:{path}"], text=True)
+
+          downstream_lock = {
+              package["name"]: package["version"]
+              for package in tomllib.loads(git_show("uv.lock"))["package"]
+          }
+          if downstream_lock.get(package_name) != package_version:
+              raise SystemExit(
+                  f"{ref} lock has {package_name}=={downstream_lock.get(package_name)}, "
+                  f"not {package_version}"
+              )
+
+          if update_mode == "exact":
+              metadata = tomllib.loads(git_show("pyproject.toml"))["project"]
+              dependency_pattern = re.compile(
+                  rf"^{re.escape(package_name)}=={re.escape(package_version)}(?:[; ].*)?$"
+              )
+              if not any(dependency_pattern.match(dependency) for dependency in metadata["dependencies"]):
+                  raise SystemExit(
+                      f"{ref} pyproject.toml does not pin {package_name}=={package_version}"
+                  )
+
+          print(f"{ref} already contains {package_name}=={package_version}")
+          PY
+          then
+            exit 0
+          fi
+
+          "$GIT_BINARY" rebase "origin/${DOWNSTREAM_BRANCH}"
           "$GIT_BINARY" push origin "HEAD:${DOWNSTREAM_BRANCH}"
 
       - name: Dispatch and verify configured release dependents
