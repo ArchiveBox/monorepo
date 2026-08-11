@@ -221,6 +221,7 @@ jobs:
           import json
           import os
           import sys
+          import time
           import urllib.parse
           import urllib.request
           from pathlib import Path
@@ -246,6 +247,34 @@ jobs:
           wheel_hash = hashlib.sha256(wheel_bytes).hexdigest()
           if wheel_hash != wheel["digests"]["sha256"]:
               raise SystemExit(f"Downloaded wheel hash is {wheel_hash}, not {wheel['digests']['sha256']}")
+
+          # PyPI's release API and file CDN can update before the package index
+          # consumed by installers. Do not dispatch dependents until that exact
+          # wheel and hash are visible through the PEP 691 simple API.
+          simple_url = f"https://pypi.org/simple/{urllib.parse.quote(package)}/"
+          deadline = time.monotonic() + 660
+          while True:
+              request = urllib.request.Request(
+                  simple_url,
+                  headers={"Accept": "application/vnd.pypi.simple.v1+json"},
+              )
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  simple = json.load(response)
+              matching_files = [
+                  artifact
+                  for artifact in simple["files"]
+                  if artifact["filename"] == wheel_path.name
+                  and artifact.get("hashes", {}).get("sha256") == wheel_hash
+              ]
+              if len(matching_files) == 1:
+                  break
+              if time.monotonic() >= deadline:
+                  raise SystemExit(
+                      f"PyPI simple index did not expose {wheel_path.name} with hash {wheel_hash} within 11 minutes"
+                  )
+              print(f"Waiting for {wheel_path.name} to reach the PyPI simple index...", file=sys.stderr)
+              time.sleep(15)
+
           wheel_path.write_bytes(wheel_bytes)
           (release_dir / "release.json").write_text(json.dumps(release))
 
