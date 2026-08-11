@@ -196,7 +196,6 @@ jobs:
         id: public-release
         if: steps.state.outputs.needed == 'true' || steps.edge.outputs.dispatch_repositories != ''
         env:
-          GH_TOKEN: ${{ secrets.release_token }}
           UPSTREAM_REPOSITORY: ${{ steps.edge.outputs.repository }}
           UPSTREAM_TAG_PREFIX: ${{ steps.edge.outputs.tag_prefix }}
           UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
@@ -205,11 +204,17 @@ jobs:
         run: |
           set -Eeuo pipefail
           uv run --no-cache --no-project python -c 'import time; time.sleep(60)'
-          RELEASE_TAG="$("$GH_BINARY" release view "${UPSTREAM_TAG_PREFIX}${UPSTREAM_VERSION}" \
-            --repo "$UPSTREAM_REPOSITORY" \
-            --json tagName \
-            --jq .tagName)"
-          test "$RELEASE_TAG" = "${UPSTREAM_TAG_PREFIX}${UPSTREAM_VERSION}"
+          RELEASE_TAG="${UPSTREAM_TAG_PREFIX}${UPSTREAM_VERSION}"
+          # Do not require a GitHub Release here. Automated rc builds must not
+          # publish GitHub Releases because each one emails subscribed users.
+          # The release coordinator keys off the exact git tag plus PyPI files.
+          RELEASE_SHA="$("$GIT_BINARY" -C "$GITHUB_WORKSPACE/upstream" rev-parse HEAD)"
+          REMOTE_REF="$("$GIT_BINARY" ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" "refs/tags/${RELEASE_TAG}^{}")"
+          if [[ -z "$REMOTE_REF" ]]; then
+            REMOTE_REF="$("$GIT_BINARY" ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" "refs/tags/${RELEASE_TAG}")"
+          fi
+          REMOTE_SHA="${REMOTE_REF%%[[:space:]]*}"
+          test "$REMOTE_SHA" = "$RELEASE_SHA"
           mapfile -t PUBLIC_ARTIFACT < <(
             uv run --no-cache --no-project python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" <<'PY'
           import hashlib
@@ -501,11 +506,16 @@ jobs:
         run: |
           set -Eeuo pipefail
           RELEASE_TAG="${UPSTREAM_TAG_PREFIX}${UPSTREAM_VERSION}"
+          # Do not require a GitHub Release here. Automated rc builds must not
+          # publish GitHub Releases because each one emails subscribed users.
+          # Downstream package workflows only need the exact upstream git tag.
           RELEASE_SHA="$("$GIT_BINARY" -C upstream rev-parse HEAD)"
-          REMOTE_REF="$("$GIT_BINARY" ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" "refs/tags/${RELEASE_TAG}")"
+          REMOTE_REF="$("$GIT_BINARY" ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" "refs/tags/${RELEASE_TAG}^{}")"
+          if [[ -z "$REMOTE_REF" ]]; then
+            REMOTE_REF="$("$GIT_BINARY" ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" "refs/tags/${RELEASE_TAG}")"
+          fi
           REMOTE_SHA="${REMOTE_REF%%[[:space:]]*}"
           test "$REMOTE_SHA" = "$RELEASE_SHA"
-          test "$("$GH_BINARY" release view "$RELEASE_TAG" --repo "$UPSTREAM_REPOSITORY" --json tagName --jq .tagName)" = "$RELEASE_TAG"
 
           IFS=',' read -ra repositories <<< "$DISPATCH_REPOSITORIES"
           IFS=',' read -ra workflows <<< "$DISPATCH_WORKFLOWS"
