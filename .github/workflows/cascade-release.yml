@@ -158,6 +158,7 @@ jobs:
           ABXPKG_LIB_DIR: ${{ runner.temp }}/abx-lib
         run: |
           set -Eeuo pipefail
+          uv run --no-cache --no-project python -c 'import time; time.sleep(60)'
           ABXPKG_VERSION="$(uv run --no-cache --no-project python - <<'PY'
           import subprocess
           import tomllib
@@ -203,7 +204,6 @@ jobs:
         working-directory: ${{ steps.edge.outputs.downstream_repository != '' && 'downstream' || 'coordinator' }}
         run: |
           set -Eeuo pipefail
-          uv run --no-cache --no-project python -c 'import time; time.sleep(60)'
           RELEASE_TAG="${UPSTREAM_TAG_PREFIX}${UPSTREAM_VERSION}"
           # Do not require a GitHub Release here. Automated rc builds must not
           # publish GitHub Releases because each one emails subscribed users.
