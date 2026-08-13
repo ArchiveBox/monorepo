@@ -158,7 +158,8 @@ jobs:
           ABXPKG_LIB_DIR: ${{ runner.temp }}/abx-lib
         run: |
           set -Eeuo pipefail
-          uv run --no-cache --no-project python -c 'import time; time.sleep(60)'
+          # PyPI edge caches can lag the upload API by more than 90 seconds.
+          uv run --no-cache --no-project python -c 'import time; time.sleep(180)'
           ABXPKG_VERSION="$(uv run --no-cache --no-project python - <<'PY'
           import subprocess
           import tomllib
