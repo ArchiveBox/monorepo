@@ -224,6 +224,7 @@ jobs:
           import time
           import urllib.parse
           import urllib.request
+          from datetime import datetime, timedelta, timezone
           from pathlib import Path
 
           package, version = sys.argv[1:]
@@ -274,6 +275,15 @@ jobs:
                   )
               print(f"Waiting for {wheel_path.name} to reach the PyPI simple index...", file=sys.stderr)
               time.sleep(15)
+
+          # One visible CDN edge does not mean every installer edge has refreshed.
+          # Restore the release-age window removed when tool bootstrap moved to GitHub.
+          published_at = datetime.fromisoformat(wheel["upload_time_iso_8601"])
+          installer_ready_at = published_at + timedelta(minutes=5)
+          remaining = (installer_ready_at - datetime.now(timezone.utc)).total_seconds()
+          if remaining > 0:
+              print(f"Waiting {remaining:.0f}s for PyPI installer edges to converge...", file=sys.stderr)
+              time.sleep(remaining)
 
           wheel_path.write_bytes(wheel_bytes)
           (release_dir / "release.json").write_text(json.dumps(release))
