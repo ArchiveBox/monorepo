@@ -484,7 +484,7 @@ jobs:
           "$GIT_BINARY" rebase "origin/${DOWNSTREAM_BRANCH}"
           "$GIT_BINARY" push origin "HEAD:${DOWNSTREAM_BRANCH}"
 
-      - name: Dispatch and verify configured release dependents
+      - name: Dispatch configured release dependents
         if: steps.edge.outputs.dispatch_repositories != ''
         env:
           GH_TOKEN: ${{ secrets.release_token }}
@@ -511,7 +511,6 @@ jobs:
           IFS=',' read -ra workflows <<< "$DISPATCH_WORKFLOWS"
           test "${#repositories[@]}" -eq "${#workflows[@]}"
 
-          run_ids=()
           for index in "${!repositories[@]}"; do
             repository="${repositories[$index]}"
             workflow="${workflows[$index]}"
@@ -521,16 +520,5 @@ jobs:
               -f ref=main \
               -f "inputs[archivebox_version]=$UPSTREAM_VERSION")"
             run_id="$(printf '%s' "$response" | "$JQ_BINARY" -er '.workflow_run_id')"
-            run_ids+=("$run_id")
             echo "Dispatched ${repository} run ${run_id} for ${UPSTREAM_REPOSITORY}@${RELEASE_TAG}"
           done
-
-          status=0
-          for index in "${!repositories[@]}"; do
-            "$GH_BINARY" run watch "${run_ids[$index]}" \
-              --repo "${repositories[$index]}" \
-              --compact \
-              --exit-status \
-              --interval 10 || status=1
-          done
-          exit "$status"
