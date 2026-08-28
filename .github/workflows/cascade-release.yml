@@ -323,7 +323,7 @@ jobs:
           (( ${#REQUIRED_INTERNAL[@]} ))
           if [[ "$UPDATE_MODE" == "exact" ]]; then
             uv add --no-cache --frozen \
-              "${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}"
+              "${REQUIRED_INTERNAL[@]}"
           elif [[ "$UPDATE_MODE" != "lock" ]]; then
             echo "Unsupported dependency update mode: $UPDATE_MODE" >&2
             exit 1
