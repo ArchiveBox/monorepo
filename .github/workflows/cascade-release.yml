@@ -11,12 +11,17 @@ on:
         description: Exact public release version
         required: true
         type: string
+      upstream_artifact_name:
+        description: Candidate artifact containing the published wheel and sdist
+        required: true
+        type: string
     secrets:
       release_token:
         description: Token allowed to push the immediate dependent repository
         required: true
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -46,11 +51,20 @@ jobs:
           version: "0.11.3"
           enable-cache: false
 
+      - name: Download exact tested release artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ inputs.upstream_artifact_name }}
+          path: ${{ runner.temp }}/public-release
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
       - name: Resolve dependency edge
         id: edge
         env:
           UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
           UPSTREAM_VERSION: ${{ inputs.upstream_version }}
+          TESTED_ARTIFACT_DIR: ${{ runner.temp }}/public-release
         run: |
           set -Eeuo pipefail
           uv run --no-cache --no-project python - <<'PY'
@@ -217,42 +231,37 @@ jobs:
           test "$REMOTE_SHA" = "$RELEASE_SHA"
           mapfile -t PUBLIC_ARTIFACT < <(
             uv run --no-cache --no-project python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" <<'PY'
-          import hashlib
+          from hashlib import blake2b, sha256
           import json
           import os
+          import re
           import sys
-          import time
-          import urllib.parse
-          import urllib.request
           from pathlib import Path
 
           package, version = sys.argv[1:]
-          request = urllib.request.Request(
-              f"https://pypi.org/pypi/{package}/{version}/json?cache_bust={time.time_ns()}",
-              headers={"Cache-Control": "no-cache, no-store, max-age=0", "Pragma": "no-cache"},
-          )
-          with urllib.request.urlopen(request, timeout=20) as response:
-              release = json.load(response)
-          if release["info"]["version"] != version:
-              raise SystemExit(f"PyPI returned {release['info']['version']}, not {version}")
-          wheels = [artifact for artifact in release["urls"] if artifact["packagetype"] == "bdist_wheel"]
-          sdists = [artifact for artifact in release["urls"] if artifact["packagetype"] == "sdist"]
-          if len(wheels) != 1:
-              raise SystemExit(f"Expected exactly one public wheel for {package}=={version}, found {len(wheels)}")
-          if len(sdists) != 1:
-              raise SystemExit(f"Expected exactly one public sdist for {package}=={version}, found {len(sdists)}")
+          artifact_dir = Path(os.environ["TESTED_ARTIFACT_DIR"])
+          distribution = re.sub(r"[-_.]+", "_", package)
+          wheels = list(artifact_dir.rglob(f"{distribution}-{version}-*.whl"))
+          sdists = list(artifact_dir.rglob(f"{distribution}-{version}.tar.gz"))
+          if len(wheels) != 1 or len(sdists) != 1:
+              raise SystemExit(f"Expected one tested wheel and sdist, found {wheels} and {sdists}")
 
-          wheel = wheels[0]
-          release_dir = Path(os.environ["RUNNER_TEMP"]) / f"public-release-{package}-{version}"
+          def artifact(path, packagetype):
+              data = path.read_bytes()
+              digest = blake2b(data, digest_size=32).hexdigest()
+              return {
+                  "filename": path.name,
+                  "packagetype": packagetype,
+                  "url": f"https://files.pythonhosted.org/packages/{digest[:2]}/{digest[2:4]}/{digest[4:]}/{path.name}",
+                  "digests": {"sha256": sha256(data).hexdigest()},
+                  "size": len(data),
+              }
+
+          release = {"info": {"version": version}, "urls": [artifact(sdists[0], "sdist"), artifact(wheels[0], "bdist_wheel")]}
+          release_dir = Path(os.environ["RUNNER_TEMP"]) / f"resolved-release-{package}-{version}"
           release_dir.mkdir()
-          wheel_path = release_dir / Path(urllib.parse.urlparse(wheel["url"]).path).name
-          with urllib.request.urlopen(wheel["url"], timeout=30) as response:
-              wheel_bytes = response.read()
-          wheel_hash = hashlib.sha256(wheel_bytes).hexdigest()
-          if wheel_hash != wheel["digests"]["sha256"]:
-              raise SystemExit(f"Downloaded wheel hash is {wheel_hash}, not {wheel['digests']['sha256']}")
-
-          wheel_path.write_bytes(wheel_bytes)
+          wheel_path = release_dir / wheels[0].name
+          wheel_path.write_bytes(wheels[0].read_bytes())
           (release_dir / "release.json").write_text(json.dumps(release))
 
           print(release_dir)
@@ -361,7 +370,7 @@ jobs:
           def artifact_line(artifact):
               return (
                   f'{{ url = "{artifact["url"]}", hash = "sha256:{artifact["digests"]["sha256"]}", '
-                  f'size = {artifact["size"]}, upload-time = "{artifact["upload_time_iso_8601"]}" }}'
+                  f'size = {artifact["size"]} }}'
               )
 
           path = Path("uv.lock")

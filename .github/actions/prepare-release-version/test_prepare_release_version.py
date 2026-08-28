@@ -59,3 +59,6 @@ def test_cascade_leaves_version_selection_to_the_consumer():
     assert "bump_version.sh" not in workflow
     assert "version_scheme" not in graph
     assert "time.sleep" not in workflow
+    assert "pypi.org/pypi" not in workflow
+    assert "actions/download-artifact" in workflow
+    assert "blake2b" in workflow
