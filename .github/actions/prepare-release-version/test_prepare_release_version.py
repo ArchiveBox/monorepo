@@ -44,3 +44,12 @@ def test_release_tag_on_head_can_be_adopted():
 def test_conflicting_candidate_and_release_owners_fail_closed():
     with pytest.raises(ValueError, match="different commits"):
         MODULE.classify("head", MODULE.VersionState(candidate_owner="one", release_owner="two"))
+
+
+def test_cascade_leaves_version_selection_to_the_consumer():
+    workflow = (PATH.parents[2] / "workflows" / "cascade-release.yml").read_text()
+    graph = (PATH.parents[2] / "release-graph.toml").read_text()
+    assert "NEXT_VERSION" not in workflow
+    assert "bump_version.sh" not in workflow
+    assert "version_scheme" not in graph
+    assert "time.sleep" not in workflow

@@ -221,10 +221,8 @@ jobs:
           import json
           import os
           import sys
-          import time
           import urllib.parse
           import urllib.request
-          from datetime import datetime, timedelta, timezone
           from pathlib import Path
 
           package, version = sys.argv[1:]
@@ -248,42 +246,6 @@ jobs:
           wheel_hash = hashlib.sha256(wheel_bytes).hexdigest()
           if wheel_hash != wheel["digests"]["sha256"]:
               raise SystemExit(f"Downloaded wheel hash is {wheel_hash}, not {wheel['digests']['sha256']}")
-
-          # PyPI's release API and file CDN can update before the package index
-          # consumed by installers. Do not dispatch dependents until that exact
-          # wheel and hash are visible through the PEP 691 simple API.
-          simple_url = f"https://pypi.org/simple/{urllib.parse.quote(package)}/"
-          deadline = time.monotonic() + 660
-          while True:
-              request = urllib.request.Request(
-                  simple_url,
-                  headers={"Accept": "application/vnd.pypi.simple.v1+json"},
-              )
-              with urllib.request.urlopen(request, timeout=30) as response:
-                  simple = json.load(response)
-              matching_files = [
-                  artifact
-                  for artifact in simple["files"]
-                  if artifact["filename"] == wheel_path.name
-                  and artifact.get("hashes", {}).get("sha256") == wheel_hash
-              ]
-              if len(matching_files) == 1:
-                  break
-              if time.monotonic() >= deadline:
-                  raise SystemExit(
-                      f"PyPI simple index did not expose {wheel_path.name} with hash {wheel_hash} within 11 minutes"
-                  )
-              print(f"Waiting for {wheel_path.name} to reach the PyPI simple index...", file=sys.stderr)
-              time.sleep(15)
-
-          # One visible CDN edge does not mean every installer edge has refreshed.
-          # Restore the release-age window removed when tool bootstrap moved to GitHub.
-          published_at = datetime.fromisoformat(wheel["upload_time_iso_8601"])
-          installer_ready_at = published_at + timedelta(minutes=5)
-          remaining = (installer_ready_at - datetime.now(timezone.utc)).total_seconds()
-          if remaining > 0:
-              print(f"Waiting {remaining:.0f}s for PyPI installer edges to converge...", file=sys.stderr)
-              time.sleep(remaining)
 
           wheel_path.write_bytes(wheel_bytes)
           (release_dir / "release.json").write_text(json.dumps(release))
@@ -320,13 +282,12 @@ jobs:
               )
           PY
 
-      - name: Update dependency and bump dependent version
+      - name: Update the immediate dependency
         if: steps.state.outputs.needed == 'true'
         env:
           UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
           UPSTREAM_VERSION: ${{ inputs.upstream_version }}
           UPDATE_MODE: ${{ steps.edge.outputs.update_mode }}
-          VERSION_SCHEME: ${{ steps.edge.outputs.version_scheme }}
           WHEEL_DIR: ${{ steps.public-release.outputs.wheel_dir }}
           UV_NO_CACHE: "1"
         working-directory: downstream
@@ -367,31 +328,6 @@ jobs:
             echo "Unsupported dependency update mode: $UPDATE_MODE" >&2
             exit 1
           fi
-
-          NEXT_VERSION="$(uv run --no-cache --no-project python - "$VERSION_SCHEME" <<'PY'
-          import re
-          import sys
-          import tomllib
-
-          with open("pyproject.toml", "rb") as stream:
-              current = tomllib.load(stream)["project"]["version"]
-          match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:rc(\d+))?", current)
-          if not match:
-              raise SystemExit(f"Unsupported current version: {current}")
-          major, minor, patch, rc = match.groups()
-          if sys.argv[1] == "patch":
-              if rc is not None:
-                  raise SystemExit(f"Cannot patch-bump prerelease version: {current}")
-              print(f"{major}.{minor}.{int(patch) + 1}")
-          elif sys.argv[1] == "rc":
-              if rc is None:
-                  raise SystemExit(f"Cannot rc-bump stable version: {current}")
-              print(f"{major}.{minor}.{patch}rc{int(rc) + 1}")
-          else:
-              raise SystemExit(f"Unsupported version scheme: {sys.argv[1]}")
-          PY
-          )"
-          UV_FIND_LINKS="$WHEEL_DIR" ./bin/bump_version.sh "$NEXT_VERSION"
 
           LOCK_ARGS=(uv lock --no-cache --no-sources --find-links "$WHEEL_DIR")
           for requirement in "${REQUIRED_INTERNAL[@]}"; do
