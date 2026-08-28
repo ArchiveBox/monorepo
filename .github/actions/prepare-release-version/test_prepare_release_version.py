@@ -37,6 +37,12 @@ def test_registry_version_without_tag_is_occupied():
     assert MODULE.classify("head", MODULE.VersionState(registry_exists=True)) == "occupied"
 
 
+def test_simple_registry_page_detects_exact_version():
+    page = '<a href="file">abxpkg-1.12.99-py3-none-any.whl</a>'
+    assert MODULE.simple_has_version(page, "abxpkg", "1.12.99")
+    assert not MODULE.simple_has_version(page, "abxpkg", "1.12.9")
+
+
 def test_release_tag_on_head_can_be_adopted():
     assert MODULE.classify("head", MODULE.VersionState(release_owner="head", registry_exists=True)) == "reserve"
 

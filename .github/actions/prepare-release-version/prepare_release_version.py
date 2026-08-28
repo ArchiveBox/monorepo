@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import time
 import tomllib
 import urllib.error
 import urllib.request
@@ -55,14 +56,23 @@ def remote_owner(ref: str) -> str | None:
 
 
 def registry_exists(package: str, version: str) -> bool:
-    url = f"https://pypi.org/pypi/{package}/{version}/json"
+    request = urllib.request.Request(
+        f"https://pypi.org/simple/{package}/?cache_bust={time.time_ns()}",
+        headers={"Cache-Control": "no-cache, no-store, max-age=0", "Pragma": "no-cache"},
+    )
     try:
-        with urllib.request.urlopen(url, timeout=20) as response:
-            return response.status == 200
+        with urllib.request.urlopen(request, timeout=20) as response:
+            return simple_has_version(response.read().decode(), package, version)
     except urllib.error.HTTPError as error:
         if error.code == 404:
             return False
         raise
+
+
+def simple_has_version(page: str, package: str, version: str) -> bool:
+    distribution = re.sub(r"[-_.]+", "_", package)
+    filename = rf">{re.escape(distribution)}-{re.escape(version)}(?:-[^<]*\.whl|\.tar\.gz)<"
+    return re.search(filename, page, re.IGNORECASE) is not None
 
 
 def state_for(package: str, version: str, tag_prefix: str) -> VersionState:
