@@ -11,6 +11,7 @@
 abxbus/
 abx-pkg/
 abxpkg/
+abxpkg-rust/
 abx-plugins/
 abx-dl/
 archivebox/
