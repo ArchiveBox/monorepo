@@ -118,7 +118,6 @@ jobs:
         env:
           UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
           UPSTREAM_VERSION: ${{ inputs.upstream_version }}
-          TESTED_ARTIFACT_DIR: ${{ runner.temp }}/public-release
         working-directory: downstream
         run: |
           set -Eeuo pipefail
@@ -215,6 +214,7 @@ jobs:
           UPSTREAM_TAG_PREFIX: ${{ steps.edge.outputs.tag_prefix }}
           UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
           UPSTREAM_VERSION: ${{ inputs.upstream_version }}
+          TESTED_ARTIFACT_DIR: ${{ runner.temp }}/public-release
         working-directory: ${{ steps.edge.outputs.downstream_repository != '' && 'downstream' || 'coordinator' }}
         run: |
           set -Eeuo pipefail
