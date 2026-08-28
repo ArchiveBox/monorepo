@@ -1,0 +1,19 @@
+.github/workflows/cascade-release.yml
+  s_3155555fdbdae3::t_32cb5811979bc1 121,224-225
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "eca509a7fca823fb1f138da80949a1fd91ca3152",
+  "prompts": {},
+  "sessions": {
+    "s_3155555fdbdae3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0467b-ccd7-7a30-a1bb-9d99d3bf7584",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
