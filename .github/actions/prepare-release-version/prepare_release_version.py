@@ -55,26 +55,22 @@ def remote_owner(ref: str) -> str | None:
     return output.split()[0] if output else None
 
 
+def registry_url(package: str, version: str) -> str:
+    return f"https://pypi.org/pypi/{package}/{version}/json?cache_bust={time.time_ns()}"
+
+
 def registry_exists(package: str, version: str) -> bool:
     request = urllib.request.Request(
-        f"https://pypi.org/simple/{package}/?cache_bust={time.time_ns()}",
+        registry_url(package, version),
         headers={"Cache-Control": "no-cache, no-store, max-age=0", "Pragma": "no-cache"},
     )
     try:
-        with urllib.request.urlopen(request, timeout=20) as response:
-            return simple_has_version(response.read().decode(), package, version)
+        with urllib.request.urlopen(request, timeout=20):
+            return True
     except urllib.error.HTTPError as error:
         if error.code == 404:
             return False
         raise
-
-
-def simple_has_version(page: str, package: str, version: str) -> bool:
-    distribution = re.sub(r"[-_.]+", "_", package)
-    filename = rf">{re.escape(distribution)}-{re.escape(version)}(?:-[^<]*\.whl|\.tar\.gz)<"
-    return re.search(filename, page, re.IGNORECASE) is not None
-
-
 def state_for(package: str, version: str, tag_prefix: str) -> VersionState:
     return VersionState(
         candidate_owner=remote_owner(f"refs/tags/release-candidate/{version}"),

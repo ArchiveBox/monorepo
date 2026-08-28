@@ -37,10 +37,10 @@ def test_registry_version_without_tag_is_occupied():
     assert MODULE.classify("head", MODULE.VersionState(registry_exists=True)) == "occupied"
 
 
-def test_simple_registry_page_detects_exact_version():
-    page = '<a href="file">abxpkg-1.12.99-py3-none-any.whl</a>'
-    assert MODULE.simple_has_version(page, "abxpkg", "1.12.99")
-    assert not MODULE.simple_has_version(page, "abxpkg", "1.12.9")
+def test_registry_check_uses_exact_version_json():
+    url = MODULE.registry_url("abx-plugins", "1.12.181")
+    assert url.startswith("https://pypi.org/pypi/abx-plugins/1.12.181/json?cache_bust=")
+    assert "/simple/" not in url
 
 
 def test_release_tag_on_head_can_be_adopted():

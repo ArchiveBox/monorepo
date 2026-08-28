@@ -221,12 +221,17 @@ jobs:
           import json
           import os
           import sys
+          import time
           import urllib.parse
           import urllib.request
           from pathlib import Path
 
           package, version = sys.argv[1:]
-          with urllib.request.urlopen(f"https://pypi.org/pypi/{package}/{version}/json", timeout=20) as response:
+          request = urllib.request.Request(
+              f"https://pypi.org/pypi/{package}/{version}/json?cache_bust={time.time_ns()}",
+              headers={"Cache-Control": "no-cache, no-store, max-age=0", "Pragma": "no-cache"},
+          )
+          with urllib.request.urlopen(request, timeout=20) as response:
               release = json.load(response)
           if release["info"]["version"] != version:
               raise SystemExit(f"PyPI returned {release['info']['version']}, not {version}")
