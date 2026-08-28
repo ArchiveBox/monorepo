@@ -1,0 +1,90 @@
+name: Prepare release version
+description: Atomically reserve the source version or bump to the next free version
+
+inputs:
+  package:
+    description: Python distribution name on PyPI
+    required: true
+  branch:
+    description: Branch whose HEAD is being prepared
+    required: true
+  tag-prefix:
+    description: Prefix used by public release tags
+    required: false
+    default: v
+  version-scheme:
+    description: Version component to increment when the source version is occupied
+    required: true
+
+outputs:
+  action:
+    description: ready, reserved, bumped, or stale
+    value: ${{ steps.apply.outputs.action }}
+  version:
+    description: Version owned by the prepared commit
+    value: ${{ steps.apply.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+      with:
+        version: "0.11.3"
+        enable-cache: false
+
+    - name: Plan version ownership
+      id: plan
+      shell: bash
+      env:
+        RELEASE_PACKAGE: ${{ inputs.package }}
+        RELEASE_BRANCH: ${{ inputs.branch }}
+        RELEASE_TAG_PREFIX: ${{ inputs.tag-prefix }}
+        RELEASE_VERSION_SCHEME: ${{ inputs.version-scheme }}
+      run: uv run --no-cache --no-project python "${{ github.action_path }}/prepare_release_version.py"
+
+    - name: Reserve or bump version
+      id: apply
+      shell: bash
+      env:
+        RELEASE_BRANCH: ${{ inputs.branch }}
+        ACTION: ${{ steps.plan.outputs.action }}
+        VERSION: ${{ steps.plan.outputs.version }}
+        CANDIDATE_TAG: ${{ steps.plan.outputs.candidate_tag }}
+      run: |
+        set -Eeuo pipefail
+        if [[ "$ACTION" == ready || "$ACTION" == stale ]]; then
+          echo "action=$ACTION" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        git config user.name "ArchiveBox Release Bot"
+        git config user.email "release-bot@archivebox.io"
+        if [[ "$ACTION" == reserve ]]; then
+          git tag "$CANDIDATE_TAG" HEAD
+          git push origin "refs/tags/$CANDIDATE_TAG"
+          echo "action=reserved" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        test "$ACTION" = bump
+        ./bin/bump_version.sh "$VERSION"
+        git diff --check
+        git add -u
+        git commit -m "Bump release version to $VERSION"
+        git tag "$CANDIDATE_TAG" HEAD
+        if git push --atomic origin "HEAD:refs/heads/$RELEASE_BRANCH" "refs/tags/$CANDIDATE_TAG"; then
+          echo "action=bumped" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        git fetch origin "$RELEASE_BRANCH"
+        if [[ "$(git rev-parse "origin/$RELEASE_BRANCH")" != "$(git rev-parse HEAD^)" ]]; then
+          echo "Branch advanced while preparing $VERSION; the newer push will prepare itself."
+          echo "action=stale" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        exit 1
