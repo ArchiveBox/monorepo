@@ -1,0 +1,21 @@
+.github/actions/prepare-release-version/test_prepare_release_version.py
+  s_3155555fdbdae3::t_fe459728e0df31 47-55
+.github/workflows/cascade-release.yml
+  s_3155555fdbdae3::t_3c98ffc0b12812 285
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "9985788db68630b1d663d5993b07b74c4110c3ed",
+  "prompts": {},
+  "sessions": {
+    "s_3155555fdbdae3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0467b-ccd7-7a30-a1bb-9d99d3bf7584",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
