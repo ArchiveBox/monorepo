@@ -64,7 +64,6 @@ jobs:
         env:
           UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
           UPSTREAM_VERSION: ${{ inputs.upstream_version }}
-          TESTED_ARTIFACT_DIR: ${{ runner.temp }}/public-release
         run: |
           set -Eeuo pipefail
           uv run --no-cache --no-project python - <<'PY'
@@ -119,6 +118,7 @@ jobs:
         env:
           UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
           UPSTREAM_VERSION: ${{ inputs.upstream_version }}
+          TESTED_ARTIFACT_DIR: ${{ runner.temp }}/public-release
         working-directory: downstream
         run: |
           set -Eeuo pipefail
@@ -221,7 +221,8 @@ jobs:
           RELEASE_TAG="${UPSTREAM_TAG_PREFIX}${UPSTREAM_VERSION}"
           # Do not require a GitHub Release here. Automated rc builds must not
           # publish GitHub Releases because each one emails subscribed users.
-          # The release coordinator keys off the exact git tag plus PyPI files.
+          # The release coordinator keys off the exact git tag plus the exact
+          # candidate artifacts that the publisher accepted.
           RELEASE_SHA="$("$GIT_BINARY" -C "$GITHUB_WORKSPACE/upstream" rev-parse HEAD)"
           REMOTE_REF="$("$GIT_BINARY" ls-remote "https://github.com/${UPSTREAM_REPOSITORY}.git" "refs/tags/${RELEASE_TAG}^{}")"
           if [[ -z "$REMOTE_REF" ]]; then
