@@ -1,6 +1,6 @@
 .DS_Store
 .venv/
-.__pycache__/
+__pycache__/
 *.pyc
 .vscode/
 .claude/
@@ -31,3 +31,5 @@ index.sqlite3
 hashes/
 validation-artifacts/
 {ABXPKG_LIB_DIR}/
+evals/site/data.json
+evals/site/data.json.tmp

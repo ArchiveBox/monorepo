@@ -1,0 +1,18 @@
+name: Report ArchiveBox CI evals
+description: Time one real package import and expose the result in the existing job log
+
+inputs:
+  import-name:
+    description: Importable Python package name, such as abx_plugins
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Measure package import
+      shell: bash
+      env:
+        ABX_EVALS_IMPORT_NAME: ${{ inputs.import-name }}
+      run: |
+        set -Eeuo pipefail
+        uv run --no-cache --no-sync python "$GITHUB_ACTION_PATH/../../../evals/measure_import.py" "$ABX_EVALS_IMPORT_NAME"

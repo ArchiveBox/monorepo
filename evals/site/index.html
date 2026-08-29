@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0d1117" />
+    <meta name="description" content="Unified CI health, test timing, package, image, and import metrics for the ArchiveBox project family." />
+    <meta property="og:title" content="ArchiveBox CI Observatory" />
+    <meta property="og:description" content="One live view of CI performance across abxbus, abxpkg, abx-plugins, abx-dl, and ArchiveBox." />
+    <meta property="og:image" content="https://archivebox.github.io/monorepo/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <title>ArchiveBox CI Observatory</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="./" aria-label="ArchiveBox CI Observatory home">
+        <span class="brand-mark" aria-hidden="true">ABX</span>
+        <span><strong>CI Observatory</strong><small>ArchiveBox monorepo</small></span>
+      </a>
+      <div class="topbar-meta">
+        <span class="live-dot" aria-hidden="true"></span>
+        <span id="syncStatus">Loading telemetry…</span>
+        <button class="icon-button" id="refreshButton" type="button" aria-label="Refresh dashboard data" title="Refresh data">↻</button>
+        <a class="ghost-link" href="https://github.com/ArchiveBox/monorepo/actions" target="_blank" rel="noreferrer">Collector runs ↗</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="intro" aria-labelledby="pageTitle">
+        <div>
+          <p class="eyebrow">BUILD INTELLIGENCE / ALL PROJECTS</p>
+          <h1 id="pageTitle">The whole stack,<br /><em>one signal.</em></h1>
+        </div>
+        <p class="intro-copy">Every authoritative CI run, subjob, test summary, published Python artifact, and Docker image—without spending runner hours to repeat work.</p>
+      </section>
+
+      <section class="summary-grid" aria-label="CI summary">
+        <article class="summary-card health-card">
+          <span class="summary-label">Project health</span>
+          <strong id="healthValue">—</strong>
+          <small id="healthNote">latest completed runs</small>
+        </article>
+        <article class="summary-card">
+          <span class="summary-label">Measured tests</span>
+          <strong id="testsValue">—</strong>
+          <small id="testsNote">parsed from existing logs</small>
+        </article>
+        <article class="summary-card">
+          <span class="summary-label">Median CI wall time</span>
+          <strong id="durationValue">—</strong>
+          <small>selected runs</small>
+        </article>
+        <article class="summary-card">
+          <span class="summary-label">Job summaries</span>
+          <strong id="coverageValue">—</strong>
+          <small id="coverageNote">incrementally collected</small>
+        </article>
+      </section>
+
+      <section class="workbench">
+        <div class="filters-header">
+          <div>
+            <p class="section-kicker">SCOPE</p>
+            <div class="project-pills" id="projectPills" aria-label="Filter projects"></div>
+          </div>
+          <button class="text-button" id="resetFilters" type="button">Reset filters</button>
+        </div>
+
+        <div class="filters-grid">
+          <label class="search-field">
+            <span>Search</span>
+            <input id="searchInput" type="search" placeholder="Run, PR, branch, job…" autocomplete="off" />
+          </label>
+          <label>
+            <span>Branch</span>
+            <select id="branchSelect"><option value="all">All branches</option></select>
+          </label>
+          <label>
+            <span>Status</span>
+            <select id="statusSelect">
+              <option value="all">Any status</option>
+              <option value="success">Passing</option>
+              <option value="failure">Failing</option>
+              <option value="active">In progress</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </label>
+          <label>
+            <span>Window</span>
+            <select id="windowSelect">
+              <option value="7">Last 7 days</option>
+              <option value="30" selected>Last 30 days</option>
+              <option value="90">Last 90 days</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section class="chart-card" aria-labelledby="trendTitle">
+        <div class="card-heading">
+          <div>
+            <p class="section-kicker">TREND</p>
+            <h2 id="trendTitle">CI wall time</h2>
+          </div>
+          <label class="metric-picker">
+            <span class="sr-only">Chart metric</span>
+            <select id="metricSelect">
+              <option value="duration">CI wall time</option>
+              <option value="tests">Test executions</option>
+              <option value="average">Average per test</option>
+              <option value="slowest">Slowest test</option>
+              <option value="pypi">PyPI wheel size</option>
+              <option value="dockerBuild">Docker build time</option>
+              <option value="dockerSize">Docker compressed size</option>
+              <option value="ttfi">Time to first import</option>
+            </select>
+          </label>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="trendChart" role="img" aria-label="CI metric trend chart"></canvas>
+          <div class="chart-empty" id="chartEmpty" hidden>No reported values in this slice yet.</div>
+        </div>
+        <div class="legend" id="chartLegend"></div>
+      </section>
+
+      <section class="table-card" aria-labelledby="runsTitle">
+        <div class="card-heading table-heading">
+          <div>
+            <p class="section-kicker">RUN INDEX</p>
+            <h2 id="runsTitle">Unified CI runs</h2>
+          </div>
+          <span class="row-count" id="rowCount">—</span>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Project / ref</th>
+                <th>Run</th>
+                <th>Status</th>
+                <th>Tests</th>
+                <th>Full CI</th>
+                <th>Avg / test</th>
+                <th>Slowest</th>
+                <th>PyPI</th>
+                <th>Docker build</th>
+                <th>Docker size</th>
+                <th>TTFI</th>
+              </tr>
+            </thead>
+            <tbody id="runsBody">
+              <tr><td colspan="11" class="loading-row">Reading existing CI results…</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-footer">
+          <span>Click a run for subjobs, step timing, and logs.</span>
+          <button class="text-button" id="showMore" type="button" hidden>Show more</button>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="runDialog" aria-labelledby="dialogTitle">
+      <div class="dialog-shell">
+        <header class="dialog-header">
+          <div>
+            <p class="section-kicker" id="dialogProject">RUN DETAIL</p>
+            <h2 id="dialogTitle">CI run</h2>
+            <p class="dialog-meta" id="dialogMeta"></p>
+          </div>
+          <button class="dialog-close" id="dialogClose" type="button" aria-label="Close run detail">×</button>
+        </header>
+        <div class="dialog-summary" id="dialogSummary"></div>
+        <div class="jobs-list" id="jobsList"></div>
+      </div>
+    </dialog>
+
+    <footer>
+      <span>Read-only telemetry. No test suites are rerun.</span>
+      <span id="sourceNote">GitHub Actions · PyPI · Docker Hub</span>
+    </footer>
+    <script src="./app.js" defer></script>
+  </body>
+</html>

@@ -1,0 +1,83 @@
+name: Publish CI evals dashboard
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - evals/**
+      - .github/actions/report-ci-evals/**
+      - .github/workflows/evals-dashboard.yml
+  schedule:
+    - cron: "17,47 * * * *"
+  workflow_dispatch:
+    inputs:
+      log_budget:
+        description: Maximum new job logs to parse during this refresh
+        required: false
+        default: "60"
+
+permissions:
+  actions: read
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages-ci-evals
+  cancel-in-progress: true
+
+jobs:
+  collect-and-deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout monorepo
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.3"
+          enable-cache: false
+
+      - name: Restore previously collected summaries
+        continue-on-error: true
+        run: |
+          curl --fail --silent --show-error --location \
+            --connect-timeout 10 --max-time 30 \
+            https://archivebox.github.io/monorepo/data.json \
+            --output "${RUNNER_TEMP}/previous-evals.json"
+
+      - name: Read existing CI results
+        env:
+          GH_TOKEN: ${{ secrets.GH_EVALS_TOKEN || github.token }}
+          LOG_BUDGET: ${{ github.event_name == 'workflow_dispatch' && inputs.log_budget || '10' }}
+        run: |
+          uv run --no-cache --no-project --python 3.13 evals/collect.py \
+            --previous "${RUNNER_TEMP}/previous-evals.json" \
+            --runs-per-project 8 \
+            --detailed-runs-per-project 4 \
+            --history-days 90 \
+            --log-budget "$LOG_BUDGET" \
+            --output evals/site/data.json
+
+      - name: Verify collector and static site
+        run: |
+          uv run --no-cache --no-project --with pytest pytest -q evals/tests
+          test -s evals/site/index.html
+          test -s evals/site/data.json
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+
+      - name: Upload dashboard
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: evals/site
+
+      - name: Deploy dashboard
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
