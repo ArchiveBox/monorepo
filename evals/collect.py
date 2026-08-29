@@ -487,15 +487,16 @@ def fetch_jobs(
     run: dict[str, Any],
     previous: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
+    page_size = 50
     previous_jobs = {job["id"]: job for job in (previous or {}).get("jobs") or []}
     jobs: list[dict[str, Any]] = []
     page = 1
     while True:
-        url = f"{GITHUB_API}/repos/ArchiveBox/{project['repo']}/actions/runs/{run['id']}/jobs?per_page=100&page={page}"
+        url = f"{GITHUB_API}/repos/ArchiveBox/{project['repo']}/actions/runs/{run['id']}/jobs?per_page={page_size}&page={page}"
         payload = client.json(url)
         batch = payload.get("jobs") or []
         jobs.extend(normalize_job(job, previous_jobs.get(job["id"])) for job in batch)
-        if len(batch) < 100:
+        if len(batch) < page_size:
             break
         page += 1
     return jobs
