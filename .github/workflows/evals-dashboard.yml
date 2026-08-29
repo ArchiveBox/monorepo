@@ -66,7 +66,7 @@ jobs:
 
       - name: Verify collector and static site
         run: |
-          uv run --no-cache --no-project --with pytest pytest -q evals/tests
+          uv run --no-cache --no-project --with pytest pytest -q -o addopts='' evals/tests
           test -s evals/site/index.html
           test -s evals/site/data.json
 
