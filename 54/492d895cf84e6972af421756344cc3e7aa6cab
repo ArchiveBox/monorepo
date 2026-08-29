@@ -1,0 +1,24 @@
+.github/workflows/evals-dashboard.yml
+  s_35e22070312684::t_d7ab37d40af4a9 17
+evals/collect.py
+  s_35e22070312684::t_d7ab37d40af4a9 17,21,128-132,145,158,541,556-557,559,561-571,573,803,891-895
+  s_35e22070312684::t_f6d111966b5507 896
+evals/README.md
+  s_35e22070312684::t_d7ab37d40af4a9 31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "54492d895cf84e6972af421756344cc3e7aa6cab",
+  "prompts": {},
+  "sessions": {
+    "s_35e22070312684": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a04a6e-8968-7341-8329-a185cb759ae0",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
