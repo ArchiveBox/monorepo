@@ -23,6 +23,9 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
 SCHEMA_VERSION = 1
+JOB_METRICS_VERSION = 1
+LOG_PARSER_VERSION = 2
+MAX_LOG_CANDIDATES_PER_RUN = 10
 GITHUB_API = "https://api.github.com"
 PROJECTS: tuple[dict[str, Any], ...] = (
     {
@@ -76,13 +79,13 @@ DOCKER_STEP_RE = re.compile(
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 TIMESTAMP_RE = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z\s+")
 PYTEST_SUMMARY_RE = re.compile(
-    r"(?P<body>(?:\d+\s+(?:passed|failed|skipped|error|errors|xfailed|xpassed|deselected)(?:,?\s*|$))+)",
+    r"^(?:=+\s*)?(?P<body>(?:\d+\s+(?:passed|failed|skipped|error|errors|xfailed|xpassed|deselected)(?:,?\s*|$))+)",
     re.I,
 )
 COUNT_RE = re.compile(
     r"(\d+)\s+(passed|failed|skipped|error|errors|xfailed|xpassed|deselected)", re.I
 )
-DURATION_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)s\s+(?:call\s+)?(.+?::[^\s]+)\s*$")
+DURATION_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)s\s+call\s+(.+?::.+?)\s*$")
 RUST_SUMMARY_RE = re.compile(
     r"test result: .*?\b(\d+) passed; (\d+) failed;.*?finished in (\d+(?:\.\d+)?)s",
     re.I,
@@ -297,7 +300,13 @@ def normalize_job(
         "log_excerpt": [],
     }
     if previous:
-        for key in ("tests", "ttfi_ms", "log_excerpt", "log_collected_at"):
+        for key in (
+            "tests",
+            "ttfi_ms",
+            "log_excerpt",
+            "log_collected_at",
+            "log_parser_version",
+        ):
             if previous.get(key) is not None:
                 normalized[key] = previous[key]
     return normalized
@@ -331,8 +340,13 @@ def likely_test_job(name_or_job: str | dict[str, Any]) -> bool:
 
 
 def aggregate_run(run: dict[str, Any]) -> None:
-    jobs = run.get("jobs") or []
-    test_jobs = [job for job in jobs if (job.get("tests") or {}).get("total")]
+    jobs = run.get("jobs") or (run.get("job_metrics") or {}).get("test_jobs") or []
+    test_jobs = [
+        job
+        for job in jobs
+        if job.get("log_parser_version") == LOG_PARSER_VERSION
+        and (job.get("tests") or {}).get("total")
+    ]
     total_tests = sum(job["tests"]["total"] for job in test_jobs)
     slowest_candidates = [
         job["tests"].get("slowest") for job in test_jobs if job["tests"].get("slowest")
@@ -345,19 +359,77 @@ def aggregate_run(run: dict[str, Any]) -> None:
         if step.get("duration_ms") is not None
         and DOCKER_STEP_RE.search(step.get("name") or "")
     ]
-    run["tests"] = {
-        "total": total_tests or None,
-        "jobs_reported": len(test_jobs),
-        "jobs_expected": sum(1 for job in jobs if likely_test_job(job)),
-        "avg_duration_ms": round(run["duration_ms"] / total_tests)
-        if total_tests and run.get("duration_ms")
-        else None,
-        "slowest": max(slowest_candidates, key=lambda item: item["duration_ms"])
-        if slowest_candidates
-        else None,
+    if test_jobs:
+        run["tests"] = {
+            "total": total_tests or None,
+            "jobs_reported": len(test_jobs),
+            "jobs_expected": sum(1 for job in jobs if likely_test_job(job)),
+            "avg_duration_ms": round(run["duration_ms"] / total_tests)
+            if total_tests and run.get("duration_ms")
+            else None,
+            "slowest": max(slowest_candidates, key=lambda item: item["duration_ms"])
+            if slowest_candidates
+            else None,
+        }
+    elif jobs:
+        run["tests"] = {
+            "total": None,
+            "jobs_reported": 0,
+            "jobs_expected": sum(1 for job in jobs if likely_test_job(job)),
+            "avg_duration_ms": None,
+            "slowest": None,
+        }
+    if ttfi:
+        run["ttfi_ms"] = round(sum(ttfi) / len(ttfi), 2)
+    if docker_steps:
+        run["docker_build_ms"] = max(docker_steps)
+
+
+def summarize_jobs(jobs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Keep regression-useful job timings after detailed job data is compacted."""
+    timed = [job for job in jobs if job.get("duration_ms") is not None]
+    top = sorted(timed, key=lambda job: job["duration_ms"], reverse=True)[:10]
+
+    def compact(job: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": job["id"],
+            "name": job["name"],
+            "duration_ms": job["duration_ms"],
+            "conclusion": job.get("conclusion"),
+            "url": job.get("url"),
+        }
+
+    def compact_test(job: dict[str, Any]) -> dict[str, Any]:
+        summary = {
+            "id": job["id"],
+            "name": job["name"],
+            "status": job.get("status"),
+            "conclusion": job.get("conclusion"),
+            "duration_ms": job.get("duration_ms"),
+            "url": job.get("url"),
+            "tests": job.get("tests"),
+            "ttfi_ms": job.get("ttfi_ms"),
+            "log_excerpt": job.get("log_excerpt") or [],
+        }
+        for key in ("log_collected_at", "log_parser_version"):
+            if job.get(key) is not None:
+                summary[key] = job[key]
+        return summary
+
+    test_candidates = sorted(
+        (job for job in jobs if likely_test_job(job)),
+        key=lambda job: job.get("duration_ms") or 0,
+        reverse=True,
+    )[:MAX_LOG_CANDIDATES_PER_RUN]
+    return {
+        "version": JOB_METRICS_VERSION,
+        "count": len(jobs),
+        "total_runner_ms": sum(job["duration_ms"] for job in timed),
+        "slowest": compact(top[0]) if top else None,
+        "top": [compact(job) for job in top],
+        "test_jobs": [compact_test(job) for job in test_candidates],
+        "collected_at": utc_now().isoformat(),
     }
-    run["ttfi_ms"] = round(sum(ttfi) / len(ttfi), 2) if ttfi else None
-    run["docker_build_ms"] = max(docker_steps) if docker_steps else None
 
 
 def normalize_run(
@@ -425,30 +497,82 @@ def fetch_runs(
     client: HTTPClient,
     project: dict[str, Any],
     limit: int,
-    detail_limit: int,
     previous_runs: dict[int, dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    url = (
-        f"{GITHUB_API}/repos/ArchiveBox/{project['repo']}/actions/workflows/"
-        f"{quote(project['workflow'])}/runs?per_page={min(limit, 100)}"
-    )
-    payload = client.json(url)
+    raw_runs: list[dict[str, Any]] = []
+    page = 1
+    while len(raw_runs) < limit:
+        url = (
+            f"{GITHUB_API}/repos/ArchiveBox/{project['repo']}/actions/workflows/"
+            f"{quote(project['workflow'])}/runs?per_page=100&page={page}"
+        )
+        batch = client.json(url).get("workflow_runs") or []
+        raw_runs.extend(batch)
+        if len(batch) < 100:
+            break
+        page += 1
+
     output = []
-    for index, raw in enumerate((payload.get("workflow_runs") or [])[:limit]):
+    for raw in raw_runs[:limit]:
         previous = previous_runs.get(raw["id"])
         if (
             previous
+            and previous.get("status") == "completed"
             and raw.get("status") == "completed"
-            and (previous.get("jobs") or index >= detail_limit)
         ):
             output.append(previous)
             continue
-        if index >= detail_limit:
-            output.append(normalize_run(project, raw, []))
-            continue
-        jobs = fetch_jobs(client, project, raw, previous)
-        output.append(normalize_run(project, raw, jobs))
+        output.append(normalize_run(project, raw, []))
     return output
+
+
+def collect_job_metadata(
+    client: HTTPClient,
+    runs: list[dict[str, Any]],
+    budget: int,
+) -> dict[str, int]:
+    """Backfill every run's job timings without downloading or rerunning tests."""
+    configs = {project["slug"]: project for project in PROJECTS}
+    queues: dict[str, deque[dict[str, Any]]] = defaultdict(deque)
+    for run in sorted(
+        runs, key=lambda item: item.get("started_at") or "", reverse=True
+    ):
+        metrics = run.get("job_metrics") or {}
+        if (
+            run.get("status") != "completed"
+            or metrics.get("version") != JOB_METRICS_VERSION
+        ):
+            queues[run["project"]].append(run)
+
+    attempted = 0
+    collected = 0
+    while attempted < budget and any(queues.values()):
+        for slug in [project["slug"] for project in PROJECTS]:
+            if attempted >= budget or not queues[slug]:
+                continue
+            run = queues[slug].popleft()
+            attempted += 1
+            try:
+                jobs = fetch_jobs(client, configs[slug], run, run)
+            except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+                continue
+            run["jobs"] = jobs
+            run["job_metrics"] = summarize_jobs(jobs)
+            completed_at = max(
+                (job.get("completed_at") or "" for job in jobs), default=""
+            )
+            if completed_at:
+                run["completed_at"] = completed_at
+                run["duration_ms"] = duration_ms(run.get("started_at"), completed_at)
+            aggregate_run(run)
+            collected += 1
+
+    return {
+        "attempted": attempted,
+        "collected": collected,
+        "failed": attempted - collected,
+        "remaining": sum(len(queue) for queue in queues.values()),
+    }
 
 
 def merge_history(
@@ -462,7 +586,13 @@ def merge_history(
         for run in previous_runs
         if (parse_time(run.get("started_at")) or cutoff) >= cutoff
     }
-    merged.update({int(run["id"]): run for run in fresh_runs})
+    merged.update(
+        {
+            int(run["id"]): run
+            for run in fresh_runs
+            if (parse_time(run.get("started_at")) or cutoff) >= cutoff
+        }
+    )
     grouped: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
     for run in merged.values():
         grouped[run["project"]].append(run)
@@ -583,9 +713,13 @@ def collect_logs(
     for run in sorted(
         runs, key=lambda item: item.get("started_at") or "", reverse=True
     ):
-        for job in run.get("jobs") or []:
+        jobs = run.get("jobs") or (run.get("job_metrics") or {}).get("test_jobs") or []
+        for job in jobs:
             if (
-                job.get("tests") is None
+                (
+                    job.get("tests") is None
+                    or job.get("log_parser_version") != LOG_PARSER_VERSION
+                )
                 and likely_test_job(job)
                 and job.get("status") == "completed"
             ):
@@ -619,10 +753,12 @@ def collect_logs(
             job["ttfi_ms"] = parsed["ttfi_ms"]
             job["log_excerpt"] = parsed["log_excerpt"]
             job["log_collected_at"] = utc_now().isoformat()
+            job["log_parser_version"] = LOG_PARSER_VERSION
             collected += 1
             aggregate_run(run)
     for run in runs:
-        for job in run.get("jobs") or []:
+        jobs = run.get("jobs") or (run.get("job_metrics") or {}).get("test_jobs") or []
+        for job in jobs:
             job.pop("log_error", None)
     return {
         "attempted": attempted,
@@ -637,9 +773,10 @@ def main(argv: list[str] | None = None) -> int:
         "--output", type=Path, default=Path(__file__).with_name("site") / "data.json"
     )
     parser.add_argument("--previous", type=Path)
-    parser.add_argument("--runs-per-project", type=int, default=8)
+    parser.add_argument("--runs-per-project", type=int, default=200)
     parser.add_argument("--detailed-runs-per-project", type=int, default=4)
     parser.add_argument("--history-days", type=int, default=90)
+    parser.add_argument("--job-metadata-budget", type=int, default=20)
     parser.add_argument("--log-budget", type=int, default=60)
     args = parser.parse_args(argv)
 
@@ -691,7 +828,6 @@ def main(argv: list[str] | None = None) -> int:
                     client,
                     config,
                     args.runs_per_project,
-                    args.detailed_runs_per_project,
                     previous_runs,
                 )
             )
@@ -710,7 +846,13 @@ def main(argv: list[str] | None = None) -> int:
     runs = merge_history(
         runs, previous.get("runs") or [], cutoff, args.detailed_runs_per_project
     )
+    job_stats = collect_job_metadata(client, runs, max(0, args.job_metadata_budget))
     log_stats = collect_logs(client, runs, max(0, args.log_budget))
+    for run in runs:
+        if run.get("jobs"):
+            run["job_metrics"] = summarize_jobs(run["jobs"])
+            aggregate_run(run)
+    runs = merge_history(runs, [], cutoff, args.detailed_runs_per_project)
 
     payload = {
         "schema_version": SCHEMA_VERSION,
@@ -721,6 +863,7 @@ def main(argv: list[str] | None = None) -> int:
         "runs": runs,
         "collection": {
             "http_requests": client.requests,
+            "job_metadata": job_stats,
             "logs": log_stats,
             "errors": errors,
         },
@@ -731,7 +874,9 @@ def main(argv: list[str] | None = None) -> int:
     temporary.replace(args.output)
     print(
         f"Wrote {len(runs)} runs / {sum(len(run.get('jobs') or []) for run in runs)} jobs "
-        f"to {args.output} ({client.requests} requests, {log_stats['collected']}/{log_stats['attempted']} logs)"
+        f"to {args.output} ({client.requests} requests, "
+        f"{job_stats['collected']}/{job_stats['attempted']} job lists, "
+        f"{log_stats['collected']}/{log_stats['attempted']} logs)"
     )
     return 0
 

@@ -15,6 +15,10 @@ on:
         description: Maximum new job logs to parse during this refresh
         required: false
         default: "60"
+      job_metadata_budget:
+        description: Maximum workflow runs whose job timings are backfilled
+        required: false
+        default: "1000"
 
 permissions:
   actions: read
@@ -29,7 +33,7 @@ concurrency:
 jobs:
   collect-and-deploy:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 30
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -55,12 +59,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_EVALS_TOKEN || github.token }}
           LOG_BUDGET: ${{ github.event_name == 'workflow_dispatch' && inputs.log_budget || '10' }}
+          JOB_METADATA_BUDGET: ${{ github.event_name == 'workflow_dispatch' && inputs.job_metadata_budget || '20' }}
         run: |
           uv run --no-cache --no-project --python 3.13 evals/collect.py \
             --previous "${RUNNER_TEMP}/previous-evals.json" \
-            --runs-per-project 8 \
+            --runs-per-project 200 \
             --detailed-runs-per-project 4 \
             --history-days 90 \
+            --job-metadata-budget "$JOB_METADATA_BUDGET" \
             --log-budget "$LOG_BUDGET" \
             --output evals/site/data.json
 

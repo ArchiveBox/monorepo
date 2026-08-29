@@ -104,15 +104,17 @@
         <div class="card-heading">
           <div>
             <p class="section-kicker">TREND</p>
-            <h2 id="trendTitle">CI wall time</h2>
+            <h2 id="trendTitle">Slowest CI job</h2>
           </div>
           <label class="metric-picker">
             <span class="sr-only">Chart metric</span>
             <select id="metricSelect">
+              <option value="slowestJob">Slowest CI job</option>
+              <option value="runnerTime">Total runner time</option>
               <option value="duration">CI wall time</option>
               <option value="tests">Test executions</option>
               <option value="average">Average per test</option>
-              <option value="slowest">Slowest test</option>
+              <option value="slowest">Slowest pytest</option>
               <option value="pypi">PyPI wheel size</option>
               <option value="dockerBuild">Docker build time</option>
               <option value="dockerSize">Docker compressed size</option>
@@ -123,6 +125,7 @@
         <div class="chart-wrap">
           <canvas id="trendChart" role="img" aria-label="CI metric trend chart"></canvas>
           <div class="chart-empty" id="chartEmpty" hidden>No reported values in this slice yet.</div>
+          <div class="chart-tooltip" id="chartTooltip" hidden></div>
         </div>
         <div class="legend" id="chartLegend"></div>
       </section>
@@ -142,10 +145,12 @@
                 <th>Project / ref</th>
                 <th>Run</th>
                 <th>Status</th>
+                <th>Slowest job</th>
                 <th>Tests</th>
                 <th>Full CI</th>
+                <th>Runner time</th>
                 <th>Avg / test</th>
-                <th>Slowest</th>
+                <th>Slowest pytest</th>
                 <th>PyPI</th>
                 <th>Docker build</th>
                 <th>Docker size</th>
@@ -153,7 +158,7 @@
               </tr>
             </thead>
             <tbody id="runsBody">
-              <tr><td colspan="11" class="loading-row">Reading existing CI results…</td></tr>
+              <tr><td colspan="13" class="loading-row">Reading existing CI results…</td></tr>
             </tbody>
           </table>
         </div>

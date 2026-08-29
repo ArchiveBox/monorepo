@@ -7,14 +7,16 @@ const COLORS = {
 };
 
 const METRICS = {
+  slowestJob: { title: "Slowest CI job", format: formatDuration, runValue: (run) => run.job_metrics?.slowest?.duration_ms },
+  runnerTime: { title: "Total runner time", format: formatDuration, runValue: (run) => run.job_metrics?.total_runner_ms },
   duration: { title: "CI wall time", format: formatDuration, runValue: (run) => run.duration_ms },
   tests: { title: "Test executions", format: formatNumber, runValue: (run) => run.tests?.total },
   average: { title: "Average per test", format: formatDuration, runValue: (run) => run.tests?.avg_duration_ms },
-  slowest: { title: "Slowest test", format: formatDuration, runValue: (run) => run.tests?.slowest?.duration_ms },
+  slowest: { title: "Slowest pytest", format: formatDuration, runValue: (run) => run.tests?.slowest?.duration_ms, empty: "No individual test durations were emitted by these CI logs." },
   pypi: { title: "PyPI wheel size", format: formatBytes, registry: "pypi" },
   dockerBuild: { title: "Docker build time", format: formatDuration, runValue: (run) => run.docker_build_ms },
   dockerSize: { title: "Docker compressed size", format: formatBytes, registry: "docker" },
-  ttfi: { title: "Time to first import", format: formatDuration, runValue: (run) => run.ttfi_ms },
+  ttfi: { title: "Time to first import", format: formatDuration, runValue: (run) => run.ttfi_ms, empty: "No ABX_EVALS import timing was emitted by these CI logs." },
 };
 
 const state = {
@@ -23,16 +25,17 @@ const state = {
   branch: "all",
   status: "all",
   window: 30,
-  metric: "duration",
+  metric: "slowestJob",
   query: "",
   limit: 50,
 };
+let chartHitPoints = [];
 
 const $ = (selector) => document.querySelector(selector);
 const els = {
   projectPills: $("#projectPills"), branch: $("#branchSelect"), status: $("#statusSelect"),
   window: $("#windowSelect"), metric: $("#metricSelect"), search: $("#searchInput"),
-  chart: $("#trendChart"), chartEmpty: $("#chartEmpty"), legend: $("#chartLegend"),
+  chart: $("#trendChart"), chartEmpty: $("#chartEmpty"), chartTooltip: $("#chartTooltip"), legend: $("#chartLegend"),
   body: $("#runsBody"), rowCount: $("#rowCount"), showMore: $("#showMore"),
   dialog: $("#runDialog"), jobs: $("#jobsList"), sync: $("#syncStatus"),
 };
@@ -102,7 +105,7 @@ function filteredRuns() {
     if (state.branch !== "all" && run.branch !== state.branch) return false;
     if (state.status !== "all" && statusClass(run) !== state.status) return false;
     if (query) {
-      const haystack = [run.project, run.branch, run.title, run.workflow, ...(run.jobs || []).map((job) => job.name)].join(" ").toLowerCase();
+      const haystack = [run.project, run.branch, run.title, run.workflow, ...(run.jobs || []).map((job) => job.name), ...(run.job_metrics?.top || []).map((job) => job.name)].join(" ").toLowerCase();
       if (!haystack.includes(query)) return false;
     }
     return true;
@@ -156,20 +159,23 @@ function renderTable(runs) {
   els.showMore.hidden = runs.length <= state.limit;
   const visible = runs.slice(0, state.limit);
   if (!visible.length) {
-    els.body.innerHTML = `<tr><td colspan="11" class="empty-row">No CI runs match this slice.</td></tr>`;
+    els.body.innerHTML = `<tr><td colspan="13" class="empty-row">No CI runs match this slice.</td></tr>`;
     return;
   }
   els.body.innerHTML = visible.map((run) => {
     const project = projectRecord(run.project);
     const pypi = project.pypi || {};
     const docker = project.docker?.latest || {};
+    const slowestJob = run.job_metrics?.slowest;
     const slowest = run.tests?.slowest;
     return `<tr data-run-id="${run.id}" tabindex="0">
       <td><div class="project-cell" style="--project-color:${COLORS[run.project]}"><span class="project-swatch"></span><span class="cell-stack"><strong>${escapeHtml(run.project)}</strong><small>${escapeHtml(run.branch)}</small></span></div></td>
       <td><span class="cell-stack"><span class="run-title" title="${escapeHtml(run.title)}">${escapeHtml(run.title)}</span><small>${escapeHtml(run.workflow)} · #${run.run_number || "?"} · ${formatDate(run.started_at)}</small></span></td>
       <td><span class="status ${statusClass(run)}">${escapeHtml(run.conclusion || run.status)}</span></td>
+      <td><span class="cell-stack"><span>${metricCell(slowestJob?.duration_ms, formatDuration, slowestJob?.name)}</span><small title="${escapeHtml(slowestJob?.name)}">${escapeHtml(slowestJob?.name || "not collected")}</small></span></td>
       <td><span class="cell-stack"><span>${metricCell(run.tests?.total, formatNumber)}</span><small class="coverage">${run.tests?.jobs_reported || 0}/${run.tests?.jobs_expected || 0} jobs</small></span></td>
       <td>${metricCell(run.duration_ms, formatDuration)}</td>
+      <td>${metricCell(run.job_metrics?.total_runner_ms, formatDuration, `${run.job_metrics?.count || 0} jobs`)}</td>
       <td>${metricCell(run.tests?.avg_duration_ms, formatDuration)}</td>
       <td>${metricCell(slowest?.duration_ms, formatDuration, slowest?.name)}</td>
       <td>${pypi.url ? `<a class="metric-link" href="${safeUrl(pypi.url)}" target="_blank" rel="noreferrer" onclick="event.stopPropagation()">${escapeHtml(pypi.version || "PyPI")} · ${formatBytes(pypi.wheel_size_bytes)}</a>` : `<span class="missing">—</span>`}</td>
@@ -197,7 +203,10 @@ function chartSeries(runs) {
   } else {
     for (const run of runs) {
       const value = metric.runValue(run);
-      if (value != null) series[run.project].push({ x: new Date(run.started_at).getTime(), y: value, label: run.title });
+      if (value != null) {
+        const job = state.metric === "slowestJob" ? run.job_metrics?.slowest?.name : null;
+        series[run.project].push({ x: new Date(run.started_at).getTime(), y: value, label: job ? `${job} — ${run.title}` : run.title, runId: run.id });
+      }
     }
   }
   for (const slug of Object.keys(series)) series[slug].sort((a, b) => a.x - b.x);
@@ -209,6 +218,7 @@ function renderChart(runs) {
   $("#trendTitle").textContent = metric.title;
   const series = chartSeries(runs);
   const points = Object.values(series).flat();
+  els.chartEmpty.textContent = metric.empty || "No reported values in this slice yet.";
   els.chartEmpty.hidden = points.length > 0;
   els.legend.innerHTML = Object.entries(series).filter(([, values]) => values.length).map(([slug]) => `<span class="legend-item" style="--project-color:${COLORS[slug]}">${escapeHtml(slug)}</span>`).join("");
 
@@ -220,6 +230,8 @@ function renderChart(runs) {
   const ctx = canvas.getContext("2d");
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, bounds.width, bounds.height);
+  chartHitPoints = [];
+  els.chartTooltip.hidden = true;
   if (!points.length) return;
 
   const pad = { top: 15, right: 18, bottom: 30, left: 64 };
@@ -250,8 +262,22 @@ function renderChart(runs) {
     if (!values.length) continue;
     ctx.strokeStyle = COLORS[slug]; ctx.fillStyle = COLORS[slug]; ctx.lineWidth = 2;
     ctx.beginPath(); values.forEach((point, index) => index ? ctx.lineTo(x(point.x), y(point.y)) : ctx.moveTo(x(point.x), y(point.y))); ctx.stroke();
-    for (const point of values) { ctx.beginPath(); ctx.arc(x(point.x), y(point.y), 3, 0, Math.PI * 2); ctx.fill(); }
+    for (const point of values) {
+      const pointX = x(point.x), pointY = y(point.y);
+      ctx.beginPath(); ctx.arc(pointX, pointY, 3, 0, Math.PI * 2); ctx.fill();
+      chartHitPoints.push({ ...point, slug, canvasX: pointX, canvasY: pointY });
+    }
   }
+}
+
+function nearestChartPoint(event) {
+  const bounds = els.chart.getBoundingClientRect();
+  const mouseX = event.clientX - bounds.left, mouseY = event.clientY - bounds.top;
+  const nearest = chartHitPoints.reduce((best, point) => {
+    const distance = Math.hypot(point.canvasX - mouseX, point.canvasY - mouseY);
+    return !best || distance < best.distance ? { point, distance } : best;
+  }, null);
+  return nearest?.distance <= 12 ? nearest.point : null;
 }
 
 function openRun(run) {
@@ -260,10 +286,14 @@ function openRun(run) {
   $("#dialogMeta").innerHTML = `${escapeHtml(run.workflow)} · run #${run.run_number || "?"} · ${formatDate(run.started_at)} · <a class="metric-link" href="${safeUrl(run.url)}" target="_blank" rel="noreferrer">Open on GitHub ↗</a>`;
   $("#dialogSummary").innerHTML = [
     ["Result", run.conclusion || run.status], ["CI wall time", formatDuration(run.duration_ms)],
-    ["Measured tests", formatNumber(run.tests?.total)], ["Subjobs", formatNumber(run.jobs?.length || 0)],
+    ["Slowest job", formatDuration(run.job_metrics?.slowest?.duration_ms)],
+    ["Runner time", formatDuration(run.job_metrics?.total_runner_ms)],
+    ["Measured tests", formatNumber(run.tests?.total)], ["Subjobs", formatNumber(run.job_metrics?.count ?? run.jobs?.length ?? 0)],
   ].map(([label, value]) => `<div class="detail-stat"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
-  els.jobs.innerHTML = (run.jobs || []).map((job) => {
-    const excerpt = job.log_excerpt?.length ? `<pre class="log-excerpt">${escapeHtml(job.log_excerpt.join("\n"))}</pre>` : `<p class="muted">Compact log summary has not been collected yet. The full GitHub log remains available.</p>`;
+  const jobs = run.jobs?.length ? run.jobs : (run.job_metrics?.top || []);
+  const compact = !run.jobs?.length;
+  els.jobs.innerHTML = jobs.map((job) => {
+    const excerpt = job.log_excerpt?.length ? `<pre class="log-excerpt">${escapeHtml(job.log_excerpt.join("\n"))}</pre>` : `<p class="muted">${compact ? "Historical timing summary; open GitHub for the full job log." : "Compact test output has not been collected for this job. The full GitHub log remains available."}</p>`;
     return `<details class="job">
       <summary><span class="job-name" title="${escapeHtml(job.name)}">${escapeHtml(job.name)}</span><span class="status ${job.conclusion === "success" ? "success" : job.conclusion === "failure" ? "failure" : "cancelled"}">${escapeHtml(job.conclusion || job.status)}</span><span class="job-tests">${job.tests?.total ? `${formatNumber(job.tests.total)} tests` : formatDuration(job.duration_ms)}</span></summary>
       <div class="job-body">
@@ -272,7 +302,7 @@ function openRun(run) {
         <div class="job-actions"><a href="${safeUrl(job.url)}" target="_blank" rel="noreferrer">Open full job log ↗</a></div>
       </div>
     </details>`;
-  }).join("") || `<p class="empty-row">No subjobs reported for this run.</p>`;
+  }).join("") || `<p class="empty-row">No jobs were created for this run.</p>`;
   els.dialog.showModal();
 }
 
@@ -292,7 +322,7 @@ async function loadData({ silent = false } = {}) {
     renderBranches(); render();
   } catch (error) {
     els.sync.textContent = "Telemetry unavailable";
-    if (!state.data) els.body.innerHTML = `<tr><td colspan="11" class="empty-row">Could not load data.json. Run the collector or try again shortly.</td></tr>`;
+    if (!state.data) els.body.innerHTML = `<tr><td colspan="13" class="empty-row">Could not load data.json. Run the collector or try again shortly.</td></tr>`;
     console.error(error);
   }
 }
@@ -310,12 +340,27 @@ els.window.addEventListener("change", () => { state.window = Number(els.window.v
 els.metric.addEventListener("change", () => { state.metric = els.metric.value; renderChart(filteredRuns()); });
 els.search.addEventListener("input", () => { state.query = els.search.value.trim(); state.limit = 50; render(); });
 $("#resetFilters").addEventListener("click", () => {
-  state.projects = new Set(Object.keys(COLORS)); state.branch = "all"; state.status = "all"; state.window = 30; state.metric = "duration"; state.query = ""; state.limit = 50;
-  els.status.value = "all"; els.window.value = "30"; els.metric.value = "duration"; els.search.value = ""; renderBranches(); render();
+  state.projects = new Set(Object.keys(COLORS)); state.branch = "all"; state.status = "all"; state.window = 30; state.metric = "slowestJob"; state.query = ""; state.limit = 50;
+  els.status.value = "all"; els.window.value = "30"; els.metric.value = "slowestJob"; els.search.value = ""; renderBranches(); render();
 });
 els.showMore.addEventListener("click", () => { state.limit += 50; renderTable(filteredRuns()); });
 els.body.addEventListener("click", (event) => { const row = event.target.closest("[data-run-id]"); if (row) openRun(state.data.runs.find((run) => String(run.id) === row.dataset.runId)); });
 els.body.addEventListener("keydown", (event) => { if (["Enter", " "].includes(event.key)) { const row = event.target.closest("[data-run-id]"); if (row) { event.preventDefault(); openRun(state.data.runs.find((run) => String(run.id) === row.dataset.runId)); } } });
+els.chart.addEventListener("mousemove", (event) => {
+  const point = nearestChartPoint(event);
+  els.chart.style.cursor = point?.runId ? "pointer" : "default";
+  if (!point) { els.chartTooltip.hidden = true; return; }
+  els.chartTooltip.innerHTML = `<strong>${escapeHtml(point.slug)} · ${METRICS[state.metric].format(point.y)}</strong>${escapeHtml(point.label)}<br>${escapeHtml(formatDate(point.x))}`;
+  els.chartTooltip.style.left = `${Math.max(0, Math.min(point.canvasX + 12, els.chart.clientWidth - 350))}px`;
+  els.chartTooltip.style.top = `${Math.max(0, point.canvasY - 62)}px`;
+  els.chartTooltip.hidden = false;
+});
+els.chart.addEventListener("mouseleave", () => { els.chartTooltip.hidden = true; els.chart.style.cursor = "default"; });
+els.chart.addEventListener("click", (event) => {
+  const point = nearestChartPoint(event);
+  const run = point?.runId && state.data.runs.find((item) => String(item.id) === String(point.runId));
+  if (run) openRun(run);
+});
 $("#dialogClose").addEventListener("click", () => els.dialog.close());
 els.dialog.addEventListener("click", (event) => { if (event.target === els.dialog) els.dialog.close(); });
 $("#refreshButton").addEventListener("click", () => loadData());

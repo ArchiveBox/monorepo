@@ -1,6 +1,13 @@
 from datetime import UTC, datetime
 
-from ..collect import duration_ms, likely_test_job, merge_history, parse_test_log
+from ..collect import (
+    aggregate_run,
+    duration_ms,
+    likely_test_job,
+    merge_history,
+    parse_test_log,
+    summarize_jobs,
+)
 from ..measure_import import measure
 
 
@@ -38,6 +45,25 @@ def test_parse_rust_and_go_without_double_counting_go_lines() -> None:
     assert result["total"] == 11
     assert result["passed"] == 9
     assert result["failed"] == 2
+
+
+def test_parse_pytest_ignores_progress_line_numbers_and_allows_spaces() -> None:
+    result = parse_test_log(
+        """
+        README.md::line 60 PASSED
+        README.md::line 196 PASSED
+        34.72s call     README.md::line 6
+        14.13s call     README.md::line 196
+        ================= 20 passed, 1 deselected in 109.50s =================
+        """
+    )
+
+    assert result["total"] == 20
+    assert result["suite_duration_ms"] == 109500
+    assert result["slowest"] == {
+        "name": "README.md::line 6",
+        "duration_ms": 34720,
+    }
 
 
 def test_test_job_filter_excludes_discovery_and_build_jobs() -> None:
@@ -86,3 +112,54 @@ def test_merge_history_keeps_old_summaries_but_compacts_jobs() -> None:
     assert merged[0]["jobs"] == [{"id": 20}]
     assert merged[1]["jobs"] == []
     assert merged[1]["tests"]["total"] == 5
+
+
+def test_summarize_jobs_preserves_top_regression_signals() -> None:
+    summary = summarize_jobs(
+        [
+            {
+                "id": 1,
+                "name": "fast",
+                "duration_ms": 1000,
+                "conclusion": "success",
+                "url": "https://github.com/ArchiveBox/abxbus/actions/runs/1/job/1",
+            },
+            {
+                "id": 2,
+                "name": "slow",
+                "duration_ms": 9000,
+                "conclusion": "success",
+                "url": "https://github.com/ArchiveBox/abxbus/actions/runs/1/job/2",
+            },
+        ]
+    )
+
+    assert summary["count"] == 2
+    assert summary["total_runner_ms"] == 10000
+    assert summary["slowest"]["name"] == "slow"
+    assert [job["name"] for job in summary["top"]] == ["slow", "fast"]
+
+
+def test_aggregate_run_excludes_metrics_from_an_old_parser() -> None:
+    run = {
+        "duration_ms": 10000,
+        "jobs": [
+            {
+                "name": "pytest stale",
+                "tests": {"total": 60, "slowest": None},
+                "log_parser_version": 1,
+                "steps": [],
+            },
+            {
+                "name": "pytest current",
+                "tests": {"total": 20, "slowest": None},
+                "log_parser_version": 2,
+                "steps": [],
+            },
+        ],
+    }
+
+    aggregate_run(run)
+
+    assert run["tests"]["total"] == 20
+    assert run["tests"]["jobs_reported"] == 1
