@@ -14,7 +14,7 @@ on:
       log_budget:
         description: Maximum new job logs to parse during this refresh
         required: false
-        default: "60"
+        default: "10"
       job_metadata_budget:
         description: Maximum workflow runs whose job timings are backfilled
         required: false

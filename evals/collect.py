@@ -14,9 +14,11 @@ import os
 import re
 import sys
 from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime, timedelta
 from http.client import IncompleteRead
 from pathlib import Path
+from threading import Lock
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
@@ -123,6 +125,11 @@ class HTTPClient:
         self.token = token
         self.timeout = timeout
         self.requests = 0
+        self._requests_lock = Lock()
+
+    def count_request(self) -> None:
+        with self._requests_lock:
+            self.requests += 1
 
     def get(
         self, url: str, *, accept: str = "application/json", timeout: int | None = None
@@ -135,7 +142,7 @@ class HTTPClient:
         if self.token and url.startswith(GITHUB_API):
             headers["Authorization"] = f"Bearer {self.token}"
         request = Request(url, headers=headers)
-        self.requests += 1
+        self.count_request()
         try:
             with build_opener(CrossOriginRedirect()).open(
                 request, timeout=timeout or self.timeout
@@ -148,7 +155,7 @@ class HTTPClient:
             # access to another public ArchiveBox repository. Retry public reads
             # without credentials; protected job logs still fail closed.
             headers.pop("Authorization")
-            self.requests += 1
+            self.count_request()
             with build_opener(CrossOriginRedirect()).open(
                 Request(url, headers=headers), timeout=timeout or self.timeout
             ) as response:  # noqa: S310
@@ -531,6 +538,7 @@ def collect_job_metadata(
     client: HTTPClient,
     runs: list[dict[str, Any]],
     budget: int,
+    workers: int,
 ) -> dict[str, int]:
     """Backfill every run's job timings without downloading or rerunning tests."""
     configs = {project["slug"]: project for project in PROJECTS}
@@ -545,16 +553,24 @@ def collect_job_metadata(
         ):
             queues[run["project"]].append(run)
 
-    attempted = 0
-    collected = 0
-    while attempted < budget and any(queues.values()):
+    selected: list[tuple[str, dict[str, Any]]] = []
+    while len(selected) < budget and any(queues.values()):
         for slug in [project["slug"] for project in PROJECTS]:
-            if attempted >= budget or not queues[slug]:
+            if len(selected) >= budget or not queues[slug]:
                 continue
-            run = queues[slug].popleft()
-            attempted += 1
+            selected.append((slug, queues[slug].popleft()))
+
+    attempted = len(selected)
+    collected = 0
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as executor:
+        pending = {
+            executor.submit(fetch_jobs, client, configs[slug], run, run): run
+            for slug, run in selected
+        }
+        for future in as_completed(pending):
+            run = pending[future]
             try:
-                jobs = fetch_jobs(client, configs[slug], run, run)
+                jobs = future.result()
             except (
                 HTTPError,
                 URLError,
@@ -784,6 +800,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--detailed-runs-per-project", type=int, default=4)
     parser.add_argument("--history-days", type=int, default=90)
     parser.add_argument("--job-metadata-budget", type=int, default=20)
+    parser.add_argument("--job-workers", type=int, default=4)
     parser.add_argument("--log-budget", type=int, default=60)
     args = parser.parse_args(argv)
 
@@ -871,7 +888,12 @@ def main(argv: list[str] | None = None) -> int:
     runs = merge_history(
         runs, previous.get("runs") or [], cutoff, args.detailed_runs_per_project
     )
-    job_stats = collect_job_metadata(client, runs, max(0, args.job_metadata_budget))
+    job_stats = collect_job_metadata(
+        client,
+        runs,
+        max(0, args.job_metadata_budget),
+        max(1, args.job_workers),
+    )
     log_stats = collect_logs(client, runs, max(0, args.log_budget))
     for run in runs:
         if run.get("jobs"):
