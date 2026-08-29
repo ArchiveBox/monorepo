@@ -1,0 +1,19 @@
+evals/collect.py
+  s_35e22070312684::t_2081db7570ef66 490,495,499
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "8a2120f960aab85cf7883cd987dc755b7433ed68",
+  "prompts": {},
+  "sessions": {
+    "s_35e22070312684": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a04a6e-8968-7341-8329-a185cb759ae0",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
