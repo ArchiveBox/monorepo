@@ -1,0 +1,19 @@
+.github/workflows/evals-dashboard.yml
+  s_35e22070312684::t_c738773857809a 69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.0",
+  "base_commit_sha": "d8d3777b461e3272fe627ac25aac7f8c1c4233c8",
+  "prompts": {},
+  "sessions": {
+    "s_35e22070312684": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a04a6e-8968-7341-8329-a185cb759ae0",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
