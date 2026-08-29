@@ -18,7 +18,7 @@ on:
       job_metadata_budget:
         description: Maximum workflow runs whose job timings are backfilled
         required: false
-        default: "1000"
+        default: "250"
 
 permissions:
   actions: read

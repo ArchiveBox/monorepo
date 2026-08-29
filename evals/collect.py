@@ -15,6 +15,7 @@ import re
 import sys
 from collections import defaultdict, deque
 from datetime import UTC, datetime, timedelta
+from http.client import IncompleteRead
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -554,7 +555,13 @@ def collect_job_metadata(
             attempted += 1
             try:
                 jobs = fetch_jobs(client, configs[slug], run, run)
-            except (HTTPError, URLError, TimeoutError, json.JSONDecodeError):
+            except (
+                HTTPError,
+                URLError,
+                TimeoutError,
+                IncompleteRead,
+                json.JSONDecodeError,
+            ):
                 continue
             run["jobs"] = jobs
             run["job_metrics"] = summarize_jobs(jobs)
@@ -740,7 +747,7 @@ def collect_logs(
                     timeout=10,
                 )
                 parsed = parse_test_log(raw.decode("utf-8", errors="replace"))
-            except (HTTPError, URLError, TimeoutError) as error:
+            except (HTTPError, URLError, TimeoutError, IncompleteRead) as error:
                 job["log_error"] = (
                     f"{type(error).__name__}: {getattr(error, 'code', '')}".strip()
                 )
@@ -796,7 +803,13 @@ def main(argv: list[str] | None = None) -> int:
         )
         try:
             record["pypi"] = fetch_pypi(client, config)
-        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as error:
+        except (
+            HTTPError,
+            URLError,
+            TimeoutError,
+            IncompleteRead,
+            json.JSONDecodeError,
+        ) as error:
             record["pypi"] = next(
                 (
                     item.get("pypi")
@@ -810,7 +823,13 @@ def main(argv: list[str] | None = None) -> int:
             )
         try:
             record["docker"] = fetch_docker(client, config)
-        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as error:
+        except (
+            HTTPError,
+            URLError,
+            TimeoutError,
+            IncompleteRead,
+            json.JSONDecodeError,
+        ) as error:
             record["docker"] = next(
                 (
                     item.get("docker")
@@ -831,7 +850,13 @@ def main(argv: list[str] | None = None) -> int:
                     previous_runs,
                 )
             )
-        except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as error:
+        except (
+            HTTPError,
+            URLError,
+            TimeoutError,
+            IncompleteRead,
+            json.JSONDecodeError,
+        ) as error:
             runs.extend(
                 run
                 for run in previous.get("runs", [])

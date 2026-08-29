@@ -28,7 +28,7 @@ Open <http://127.0.0.1:4173/>. The generated `evals/site/data.json` is intention
 
 `.github/workflows/evals-dashboard.yml` publishes `evals/site/` to this repository's GitHub Pages site on relevant pushes, manual dispatch, and twice per hour. GitHub's scheduled workflows do not support a two-minute interval; the page checks for newly deployed JSON every two minutes without consuming a runner.
 
-Scheduled and push refreshes inspect at most 20 new run job lists and ten new logs. A manual dispatch defaults to 1,000 job lists and 60 logs, which can backfill all retained runs across all five projects without making every scheduled run expensive.
+Scheduled and push refreshes inspect at most 20 new run job lists and ten new logs. A manual dispatch defaults to 250 job lists and 60 logs, providing resumable history backfills across all five projects without making every scheduled run expensive.
 
 Repository metadata and PyPI/Docker data work with the normal token. Compact test counts, slowest-test details, and TTFI are parsed from Actions job logs, which require a fine-grained `GH_EVALS_TOKEN` Actions secret with read-only **Actions** and **Metadata** access to these five public repositories. Without it the site still publishes, but log-derived cells remain explicitly unreported.
 
