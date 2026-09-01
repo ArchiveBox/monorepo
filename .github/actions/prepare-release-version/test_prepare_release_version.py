@@ -62,3 +62,10 @@ def test_cascade_leaves_version_selection_to_the_consumer():
     assert "pypi.org/pypi" not in workflow
     assert "actions/download-artifact" in workflow
     assert "blake2b" in workflow
+
+
+def test_cascade_keeps_archivebox_abx_dl_image_on_the_released_version():
+    workflow = (PATH.parents[2] / "workflows" / "cascade-release.yml").read_text()
+
+    assert 'if package_name == "abx-dl" and Path("Dockerfile").is_file():' in workflow
+    assert "ARG ABX_DL_IMAGE=archivebox/abx-dl:" in workflow

@@ -123,6 +123,7 @@ jobs:
           set -Eeuo pipefail
           STATE="$(uv run --no-cache --no-project python - <<'PY'
           import os
+          import re
           import tomllib
           from pathlib import Path
 
@@ -152,7 +153,16 @@ jobs:
           required = {name: released_lock[name] for name in required_names}
           required[package_name] = released_version
 
-          if all(downstream_lock.get(name) == version for name, version in required.items()):
+          docker_parent_current = True
+          if package_name == "abx-dl" and Path("Dockerfile").is_file():
+              docker_parent = re.search(
+                  r"^ARG ABX_DL_IMAGE=archivebox/abx-dl:([^\s]+)$",
+                  Path("Dockerfile").read_text(),
+                  re.MULTILINE,
+              )
+              docker_parent_current = bool(docker_parent and docker_parent.group(1) == released_version)
+
+          if all(downstream_lock.get(name) == version for name, version in required.items()) and docker_parent_current:
               print("consumed")
           else:
               print("needed")
@@ -407,6 +417,26 @@ jobs:
               ']\n\n'
           )
           path.write_text(text[:match.start()] + package_block + text[match.end():])
+
+          if package_name == "abx-dl" and Path("Dockerfile").is_file():
+              dockerfile_path = Path("Dockerfile")
+              dockerfile = dockerfile_path.read_text()
+              dockerfile, count = re.subn(
+                  r"^ARG ABX_DL_IMAGE=archivebox/abx-dl:[^\s]+$",
+                  f"ARG ABX_DL_IMAGE=archivebox/abx-dl:{package_version}",
+                  dockerfile,
+                  count=1,
+                  flags=re.MULTILINE,
+              )
+              if count != 1:
+                  raise SystemExit("Expected one ArchiveBox ABX_DL_IMAGE Dockerfile argument")
+              dockerfile = re.sub(
+                  r"(--build-arg ABX_DL_IMAGE=archivebox/abx-dl:)[^\s]+",
+                  rf"\g<1>{package_version}",
+                  dockerfile,
+                  count=1,
+              )
+              dockerfile_path.write_text(dockerfile)
           PY
           uv lock --check --no-cache --no-sources
           uv run --no-cache --no-project python - "${REQUIRED_INTERNAL[@]}" <<'PY'
@@ -473,6 +503,17 @@ jobs:
               if not any(dependency_pattern.match(dependency) for dependency in metadata["dependencies"]):
                   raise SystemExit(
                       f"{ref} pyproject.toml does not pin {package_name}=={package_version}"
+                  )
+
+          if package_name == "abx-dl":
+              docker_parent = re.search(
+                  r"^ARG ABX_DL_IMAGE=archivebox/abx-dl:([^\s]+)$",
+                  git_show("Dockerfile"),
+                  re.MULTILINE,
+              )
+              if not docker_parent or docker_parent.group(1) != package_version:
+                  raise SystemExit(
+                      f"{ref} Dockerfile does not pin archivebox/abx-dl:{package_version}"
                   )
 
           print(f"{ref} already contains {package_name}=={package_version}")
