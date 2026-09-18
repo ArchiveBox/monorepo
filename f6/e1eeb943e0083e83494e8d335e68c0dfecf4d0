@@ -1,0 +1,19 @@
+site-chrome/local-footers/ios.html
+  s_0859f4201835b9::t_3a4bed0220ca70 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f6e1eeb943e0083e83494e8d335e68c0dfecf4d0",
+  "prompts": {},
+  "sessions": {
+    "s_0859f4201835b9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b2d4-a4c2-7940-9318-4e0f50dbfb6c",
+        "model": "unknown"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
