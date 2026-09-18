@@ -1,0 +1,31 @@
+.github/workflows/evals-dashboard.yml
+  s_ffefb637465167::t_01a61098a40e06 30,79-83
+.github/workflows/evals-site.yml
+  s_ffefb637465167::t_7a04c9d0ae70b7 1-31
+site-chrome/README.md
+  s_0859f4201835b9::t_cbc7ef551d4553 52-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "703be396a022ec069e70822ee5339b6b729d35d4",
+  "prompts": {},
+  "sessions": {
+    "s_0859f4201835b9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b2d4-a4c2-7940-9318-4e0f50dbfb6c",
+        "model": "unknown"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    },
+    "s_ffefb637465167": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a07a32-a857-7453-a522-512c1140b8a1",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
