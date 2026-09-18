@@ -1,0 +1,23 @@
+evals/site/index.html
+  s_0859f4201835b9::t_85038a00be698c 23,195
+site-chrome/links.json
+  s_0859f4201835b9::t_ad62a1e778da61 52
+site-chrome/sync.py
+  s_0859f4201835b9::t_81a72495ef787b 175,244-245
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8c7b6c735e5afa0b9996db692bca80f7d973d72b",
+  "prompts": {},
+  "sessions": {
+    "s_0859f4201835b9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b2d4-a4c2-7940-9318-4e0f50dbfb6c",
+        "model": "unknown"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
