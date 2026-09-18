@@ -3,34 +3,34 @@
     "title": "Apps & tools",
     "links": [
       [
-        "Self-hosted Web Archive",
+        "ArchiveBox Server",
         "https://archivebox.io/",
         "ArchiveBox"
       ],
       [
-        "iOS App for iPhone & iPad",
+        "ArchiveBox for macOS & iOS",
         "https://archivebox.github.io/ios-archivebox/#get-started",
         "ios-archivebox"
       ],
       [
-        "macOS App + Server App",
-        "https://archivebox.github.io/ios-archivebox/#your-server-your-choice",
-        "ios-archivebox"
-      ],
-      [
-        "Browser Extensions",
+        "ArchiveBox Browser Extension",
         "https://archivebox.github.io/archivebox-browser-extension/",
         "archivebox-browser-extension"
       ],
       [
-        "Command-line Downloader",
+        "ArchiveBox Plugin Library",
+        "https://archivebox.github.io/abx-plugins/",
+        "abx-plugins"
+      ],
+      [
+        "One-shot abx-dl CLI",
         "https://archivebox.github.io/abx-dl/",
         "abx-dl"
       ],
       [
-        "Plugins & Extractors",
-        "https://archivebox.github.io/abx-plugins/",
-        "abx-plugins"
+        "ArchiveBox Server.app",
+        "https://archivebox.github.io/ios-archivebox/#your-server-your-choice",
+        "ios-archivebox"
       ],
       [
         "Package & Binary Manager",
@@ -48,7 +48,7 @@
         "homebrew-archivebox"
       ],
       [
-        "DigestBox \u00b7 Content Extraction Concept",
+        "DigestBox · Content Extraction Concept",
         "https://archivebox.github.io/DigestBox/",
         "DigestBox"
       ]
@@ -57,6 +57,10 @@
   {
     "title": "Learn & build",
     "links": [
+      [
+        "TLSNotary — Verifiable Web Archives",
+        "https://tlsnotary.zervice.io/"
+      ],
       [
         "Get Started & Documentation",
         "https://github.com/ArchiveBox/ArchiveBox/wiki/Quickstart",
@@ -120,6 +124,10 @@
   {
     "title": "Community & support",
     "links": [
+      [
+        "More on Github...",
+        "https://github.com/ArchiveBox"
+      ],
       [
         "Community Chat & Help",
         "https://zulip.archivebox.io/"
