@@ -10,6 +10,7 @@ const workspace = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const family = path.dirname(workspace);
 const { chromium, expect } = await import(path.join(family, 'archivebox-browser-extension/node_modules/@playwright/test/index.mjs'));
 const mounts = {
+  tlsnotary: path.join(workspace, 'abx-plugins/abx_plugins/plugins/tlsnotary/server/web'),
   archivebox: path.join(workspace, 'archivebox/publicsite'),
   plugins: path.join(workspace, 'abx-plugins/docs'),
   packages: path.join(workspace, 'abxpkg/docs'),
