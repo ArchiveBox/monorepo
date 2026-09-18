@@ -71,3 +71,11 @@ The Debian landing page has an independent Pages workflow that preserves the
 existing apt repository. The CI dashboard publishes layouts with its existing
 data immediately, while its collector refreshes data separately. Other project
 sites already build without waiting for application test or release workflows.
+
+The TLSNotary verifier is also included in the shared navigation generator. Its
+source is `abx-plugins/abx_plugins/plugins/tlsnotary/server/web`; its strict CSP
+uses the generated local `site-chrome.mjs` module instead of an inline script.
+After syncing, run the server's `visualization/build.mjs` to refresh stylesheet
+cache keys and the archived full-output template. Compact capture thumbnails
+keep the navigation hidden. TLSNotary is deployed separately from GitHub Pages
+using the gateway container on cabbage; preserve its existing signing state.

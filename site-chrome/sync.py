@@ -92,6 +92,19 @@ def footer(name, local=""):
 
 SITES = [
     {
+        "key": "tlsnotary",
+        "root": WORKSPACE / "abx-plugins",
+        "template": "abx_plugins/plugins/tlsnotary/server/web/index.html",
+        "css": "abx_plugins/plugins/tlsnotary/server/web/style.css",
+        "append_css": True,
+        "external_script": "abx_plugins/plugins/tlsnotary/server/web/site-chrome.mjs",
+        "name": "TLSNotary",
+        "home": "https://tlsnotary.zervice.io/",
+        "repo": "abx-plugins",
+        "nav": [("How it works", "#guide-title"), ("Self-host", "https://github.com/ArchiveBox/abx-plugins/tree/main/abx_plugins/plugins/tlsnotary/server")],
+        "cta": ("Verify a capture", "#status"),
+    },
+    {
         "key": "archivebox",
         "root": WORKSPACE / "archivebox",
         "template": "publicsite/index.html",
@@ -295,8 +308,13 @@ def render(check=False):
             header(**{k: site[k] for k in ["name", "home", "repo", "nav", "cta"]}),
             r"<header\b.*?</header>",
         )
+        footer_html = footer(site["name"], local)
+        if site.get("external_script"):
+            script_path = site["root"] / site["external_script"]
+            write(script_path, SCRIPT.removeprefix("<script>\n").removesuffix("\n</script>") + "\n")
+            footer_html = footer_html.replace(SCRIPT, f'<script type="module" src="{script_path.name}"></script>').replace("\n  \n", "\n\n")
         text = replace_block(
-            text, "FOOTER", footer(site["name"], local), r"<footer\b.*?</footer>"
+            text, "FOOTER", footer_html, r"<footer></footer>" if site["key"] == "tlsnotary" else r"<footer\b.*?</footer>"
         )
         if site.get("append_css"):
             css_path = site["root"] / site["css"]
