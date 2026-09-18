@@ -1,0 +1,19 @@
+site-chrome/verify.mjs
+  s_9e89a7087f4d98::t_9c188baaf33094 13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "54ee967ff724ae4c9bcdfb29a9a5001354937716",
+  "prompts": {},
+  "sessions": {
+    "s_9e89a7087f4d98": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0ac4a-4770-7061-bbd7-4827d868d8bc",
+        "model": "unknown"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
