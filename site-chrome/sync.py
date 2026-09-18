@@ -172,7 +172,7 @@ SITES = [
         "template": "index.html",
         "css": "site-chrome.css",
         "name": "DigestBox",
-        "home": "https://digestbox.io/",
+        "home": "https://archivebox.github.io/DigestBox/",
         "repo": "DigestBox",
         "nav": [("About", "https://github.com/ArchiveBox/DigestBox#readme")],
         "cta": ("Share feedback", "https://github.com/ArchiveBox/DigestBox/issues/1"),
@@ -241,6 +241,8 @@ def render(check=False):
     changed = []
 
     def write(path, text):
+        if path.parent.name == "templates" and path.name.startswith("screenshots-"):
+            text = text.rstrip() + "\n"
         if path.exists() and path.read_text() == text:
             return
         changed.append(str(path))

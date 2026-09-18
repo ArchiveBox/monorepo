@@ -46,3 +46,6 @@ legacy Jekyll preview roots are `/tmp/archivebox-chrome-preview/community` (buil
 with `--baseurl /community`) and `/tmp/archivebox-chrome-preview/good-karma-kit`.
 Apple and extension builds use their normal repository base paths. No backend
 or native application behavior is changed or substituted during these checks.
+
+DigestBox's project page is published at `https://archivebox.github.io/DigestBox/`.
+The separate live archive at `digestbox.io` keeps its existing routing.
