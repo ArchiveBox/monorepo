@@ -39,8 +39,18 @@ def link(label, url, cls=""):
     return f'<a{f" class={chr(34)}{cls}{chr(34)}" if cls else ""} href="{html.escape(url, quote=False)}">{html.escape(label)}</a>'
 
 
+APPS = [
+    ("ArchiveBox Server", "https://archivebox.io/"),
+    ("ArchiveBox for macOS & iOS", "https://archivebox.github.io/ios-archivebox/"),
+    ("ArchiveBox Browser Extension", "https://archivebox.github.io/archivebox-browser-extension/"),
+    ("ArchiveBox Plugin Library", "https://archivebox.github.io/abx-plugins/"),
+    ("One-shot abx-dl CLI", "https://archivebox.github.io/abx-dl/"),
+    ("More on Github...", "https://github.com/ArchiveBox"),
+]
+
+
 def header(name, home, repo, nav, cta):
-    apps = "".join(link(row[0], row[1]) for row in GROUPS[0]["links"])
+    apps = "".join(link(label, url) for label, url in APPS).replace("One-shot abx-dl CLI", "One-shot <code>abx-dl</code> CLI")
     return f'''<header class="abx-header">
   <a class="abx-brand" href="{home}">{LOGO}<span>ArchiveBox</span><span class="abx-subsite">{html.escape(name)}</span></a>
   <nav class="abx-nav" aria-label="Main navigation">
