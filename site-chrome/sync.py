@@ -50,7 +50,7 @@ APPS = [
 
 
 def header(name, home, repo, nav, cta):
-    apps = "".join(link(label, url) for label, url in APPS).replace("One-shot abx-dl CLI", "One-shot <code>abx-dl</code> CLI")
+    apps = "".join(link(label, url) for label, url in APPS).replace("One-shot abx-dl CLI", "<span>One-shot <code>abx-dl</code> CLI</span>")
     return f'''<header class="abx-header">
   <a class="abx-brand" href="{home}">{LOGO}<span>ArchiveBox</span><span class="abx-subsite">{html.escape(name)}</span></a>
   <nav class="abx-nav" aria-label="Main navigation">
