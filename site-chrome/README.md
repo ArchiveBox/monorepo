@@ -49,3 +49,25 @@ or native application behavior is changed or substituted during these checks.
 
 DigestBox's project page is published at `https://archivebox.github.io/DigestBox/`.
 The separate live archive at `digestbox.io` keeps its existing routing.
+
+## Fast publishing
+
+ArchiveBox, the browser extension, and the Apple app publish their current website
+on each push independently of screenshot capture. Their `screenshots.yml` workflows
+retain all real capture and completeness checks, then upload `site-screenshots`
+for 90 days. A successful capture triggers another website publish. Each publish
+checks out the latest default-branch site source, so an older capture cannot roll
+back newer copy or styles. Manual website publishing does not run capture CI;
+manually run the capture workflow to refresh images.
+
+Publishers restore the newest successful default-branch capture artifact, or
+the manifest and images from the published site after artifact expiry. Screenshot
+revision metadata is retained independently of the site revision. ArchiveBox
+re-renders the existing gallery content with current presentation. Before the
+first complete native capture, the Apple site presents its existing curated README
+screenshots without claiming they are a complete automated capture.
+
+The Debian landing page has an independent Pages workflow that preserves the
+existing apt repository. The CI dashboard publishes layouts with its existing
+data immediately, while its collector refreshes data separately. Other project
+sites already build without waiting for application test or release workflows.
