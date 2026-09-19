@@ -1,0 +1,23 @@
+evals/site/index.html
+  s_ae40efe9676f7b::t_5738a82dd40af8 23,195
+site-chrome/links.json
+  s_ae40efe9676f7b::t_b68b4678322927 12,17,22,27,32,81
+site-chrome/sync.py
+  s_ae40efe9676f7b::t_255e816fc0e1d9 44-47,129,160,163
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "05909ce659a0e635226659891b52c45814c14652",
+  "prompts": {},
+  "sessions": {
+    "s_ae40efe9676f7b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0b83d-7c96-7442-9dc5-11545f92bf6d",
+        "model": "unknown"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
