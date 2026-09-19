@@ -41,10 +41,10 @@ def link(label, url, cls=""):
 
 APPS = [
     ("ArchiveBox Server", "https://archivebox.io/"),
-    ("ArchiveBox for macOS & iOS", "https://archivebox.github.io/ios-archivebox/"),
-    ("ArchiveBox Browser Extension", "https://archivebox.github.io/archivebox-browser-extension/"),
-    ("ArchiveBox Plugin Library", "https://archivebox.github.io/abx-plugins/"),
-    ("One-shot abx-dl CLI", "https://archivebox.github.io/abx-dl/"),
+    ("ArchiveBox for macOS & iOS", "https://app.archivebox.io/"),
+    ("ArchiveBox Browser Extension", "https://extension.archivebox.io/"),
+    ("ArchiveBox Plugin Library", "https://plugins.archivebox.io/"),
+    ("One-shot abx-dl CLI", "https://abx-dl.archivebox.io/"),
     ("More on Github...", "https://github.com/ArchiveBox"),
 ]
 
@@ -126,7 +126,7 @@ SITES = [
         "template": "docs/index.html.j2",
         "css": "docs/css/site-chrome.css",
         "name": "Plugins & Extractors",
-        "home": "https://archivebox.github.io/abx-plugins/",
+        "home": "https://plugins.archivebox.io/",
         "repo": "abx-plugins",
         "nav": [
             ("Catalog", "#browser"),
@@ -157,10 +157,10 @@ SITES = [
         "css": "website/style.css",
         "append_css": True,
         "name": "Downloader CLI",
-        "home": "https://archivebox.github.io/abx-dl/",
+        "home": "https://abx-dl.archivebox.io/",
         "repo": "abx-dl",
         "nav": [("Documentation", "#readme")],
-        "cta": ("Install", "https://archivebox.github.io/abx-dl/#install"),
+        "cta": ("Install", "https://abx-dl.archivebox.io/#install"),
     },
     {
         "key": "ios",
