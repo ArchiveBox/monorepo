@@ -1,0 +1,19 @@
+site-chrome/apps.html
+  s_0464d798b1affa::t_a490f5281148a5 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bef23d73f0603b93f57b6db15b66937f57e18f26",
+  "prompts": {},
+  "sessions": {
+    "s_0464d798b1affa": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0bddf-38de-7491-9d12-f7a7c92f6fe1",
+        "model": "unknown"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
