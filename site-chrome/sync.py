@@ -39,22 +39,14 @@ def link(label, url, cls=""):
     return f'<a{f" class={chr(34)}{cls}{chr(34)}" if cls else ""} href="{html.escape(url, quote=False)}">{html.escape(label)}</a>'
 
 
-APPS = [
-    ("ArchiveBox Server", "https://archivebox.io/"),
-    ("ArchiveBox for macOS & iOS", "https://app.archivebox.io/"),
-    ("ArchiveBox Browser Extension", "https://extension.archivebox.io/"),
-    ("ArchiveBox Plugin Library", "https://plugins.archivebox.io/"),
-    ("One-shot abx-dl CLI", "https://abx-dl.archivebox.io/"),
-    ("More on Github...", "https://github.com/ArchiveBox"),
-]
+APPS = (HERE / "apps.html").read_text().strip()
 
 
 def header(name, home, repo, nav, cta):
-    apps = "".join(link(label, url) for label, url in APPS).replace("One-shot abx-dl CLI", "<span>One-shot <code>abx-dl</code> CLI</span>")
     return f'''<header class="abx-header">
-  <a class="abx-brand" href="{home}">{LOGO}<span>ArchiveBox</span><span class="abx-subsite">{html.escape(name)}</span></a>
+  <a class="abx-brand" href="https://archivebox.io/">{LOGO}<span>ArchiveBox</span><span class="abx-subsite">{html.escape(name)}</span></a>
   <nav class="abx-nav" aria-label="Main navigation">
-    <details class="abx-apps"><summary>Apps</summary><div class="abx-app-links">{apps}</div></details>
+    <details class="abx-apps"><summary>Apps</summary>{APPS}</details>
     {"".join(link(*item) for item in nav)}
     {link("GitHub ↗", "https://github.com/ArchiveBox/" + repo)}
     {link(*cta, cls="abx-cta")}

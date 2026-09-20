@@ -79,3 +79,11 @@ After syncing, run the server's `visualization/build.mjs` to refresh stylesheet
 cache keys and the archived full-output template. Compact capture thumbnails
 keep the navigation hidden. TLSNotary is deployed separately from GitHub Pages
 using the gateway container on cabbage; preserve its existing signing state.
+
+## Apps dropdown edits
+
+`apps.html` holds the reviewed static dropdown, including inline platform and integration logos.
+Each Pages repository keeps its own local HTML and CSS. Roll menu changes out manually
+to the site templates (including Android and Electron) and their gallery header fragments;
+do not add cross-repository CI synchronization. Preserve each site's local navigation and footer content.
+The ArchiveBox navbar brand always links to `https://archivebox.io/`.
