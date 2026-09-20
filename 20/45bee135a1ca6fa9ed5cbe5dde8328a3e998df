@@ -1,0 +1,21 @@
+evals/site/styles.css
+  s_fba19fa243f830::t_88af74b7912d21 175-177
+site-chrome/chrome.css
+  s_fba19fa243f830::t_3b397fb531d065 2-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2045bee135a1ca6fa9ed5cbe5dde8328a3e998df",
+  "prompts": {},
+  "sessions": {
+    "s_fba19fa243f830": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0be06-1c19-7e83-885c-12ae6bdf75ff",
+        "model": "unknown"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
