@@ -1,0 +1,29 @@
+evals/site/index.html
+  s_fba19fa243f830::t_fea905c6a0f4f5 21,23-30
+evals/site/styles.css
+  s_fba19fa243f830::t_3f4eddbd7c5afa 181,194-227,261,269,276,279-280
+site-chrome/README.md
+  s_fba19fa243f830::t_4c68bb1e5a07ac 82-89
+site-chrome/apps.html
+  s_fba19fa243f830::t_336ecc890d0d2b 1-8
+site-chrome/chrome.css
+  s_fba19fa243f830::t_ed5ce18e9ca82f 8,21-54,88,96,103,106-107
+site-chrome/sync.py
+  s_fba19fa243f830::t_37e911b5585e4f 42,47,49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d11cba86a80f15c31bb23e439f07150d040b997b",
+  "prompts": {},
+  "sessions": {
+    "s_fba19fa243f830": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0be06-1c19-7e83-885c-12ae6bdf75ff",
+        "model": "unknown"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
