@@ -7,10 +7,14 @@ description: Use this when working across the local ArchiveBox multi-repo worksp
 
 ## Purpose
 
-Use this skill when a task spans multiple repos in `/Users/squash/Local/Code/archiveboxes/new`.
+Use this skill for changes spanning the ArchiveBox server, libraries, plugins,
+apps, extension, packaging, or docs. Read the root README's project table first;
+it is the canonical project/location map. This local workspace also uses existing
+sibling checkouts for `ios-archivebox` and `archivebox-browser-extension`.
 
 ## Shared Rules
 
+- Work in one canonical checkout per project. Do not create worktrees or duplicate clones.
 - Keep `archivebox` on branch `dev`.
 - Keep every other repo on branch `main`.
 - Use `uv` and `uv run` for Python commands.
@@ -19,6 +23,23 @@ Use this skill when a task spans multiple repos in `/Users/squash/Local/Code/arc
 - Do not mock, monkeypatch, fake, simulate, skip, xfail, or weaken tests.
 - Verify behavior through real user-facing code paths and real outputs.
 - Read each repo `README.md` for the full command surface.
+
+## Route the work
+
+- Capture lifecycle and generic orchestration: `abx-dl`; plugin behavior, Chrome, and preview templates: `abx-plugins`; persistence/admin/API: `archivebox`.
+- Android: `android-archivebox` (Gradle). Desktop cross-platform: `electron-archivebox` (npm/Electron). Apple clients and macOS server: existing `../ios-archivebox` (Swift/Xcode and `ServerApp`). Browser integration: existing `../archivebox-browser-extension` (pnpm/WXT).
+- Packaging: `debian-archivebox`, `homebrew-archivebox`, `docker-archivebox`. Docs and wiki are distinct repositories. Do not recreate deleted historical docs worktrees or the macOS prototype.
+- Consult each project's README, AGENTS, and relevant development guide for its toolchain and test surface; the shared uv setup covers only the Python core.
+
+## Keep source and runtime data separate
+
+Intentional collections in ignored `archivebox/data/` or `~/archivebox/data/`
+are supported. Place temporary evidence/scratch captures outside source checkouts.
+Do not put databases, downloaded browser profiles, VM images, or backup archives
+at the monorepo root. Check ignored files as well as `git status` during cleanup;
+a clean status is not evidence of an uncluttered directory. Preserve unique
+source work before removing an old checkout. Do not remove tracked test fixtures
+just because they resemble collection data.
 
 ## Development Setup
 
@@ -85,6 +106,12 @@ git -C abx-plugins branch --show-current
 git -C abxpkg branch --show-current
 git -C abxbus branch --show-current
 ```
+
+For app/server changes, manually exercise the affected flow against a local
+server in addition to targeted tests. For persona sync, check explicit empty
+versus omitted auth fields, cookie reconciliation, browser-session reuse, and
+preferences in a real browser. For previews, inspect real captures with optional
+outputs both present and absent. Report pending device/runtime verification.
 
 Normal branch pushes run each repository's CI and release workflow. The
 monorepo release coordinator advances the dependency chain; do not prepare or

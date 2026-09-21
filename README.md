@@ -1,14 +1,35 @@
 # ArchiveBox Monorepo
 
-Umbrella `uv` monorepo environment for local development across:
+Development workspace for the ArchiveBox server, downloader, plugins, package
+providers, native clients, browser extension, documentation, and distribution
+wrappers. Each project has its own Git repository; this repository owns the
+workspace setup, shared guidance, and release coordination.
 
-- [`abxbus`](https://github.com/ArchiveBox/abxbus)
-- [`abxpkg`](https://github.com/ArchiveBox/abxpkg)
-- [`abx-plugins`](https://github.com/ArchiveBox/abx-plugins)
-- [`abx-dl`](https://github.com/ArchiveBox/abx-dl)
-- [`archivebox`](https://github.com/ArchiveBox/archivebox)
+## Projects and locations
 
-This repo only tracks the monorepo root files. Each package stays in its own Git repository and is cloned inside the root checkout.
+| Project | Purpose | Canonical location in this workspace |
+| --- | --- | --- |
+| `archivebox` | Django server, collection storage, admin/API, Docker image | `archivebox/` (`dev`) |
+| `abx-dl` | Standalone downloader and generic plugin orchestration | `abx-dl/` (`main`) |
+| `abx-plugins` | Capture hooks, config schemas, output preview templates | `abx-plugins/` (`main`) |
+| `abxpkg` | Binary discovery, installation, package providers | `abxpkg/` (`main`) |
+| `abxbus` | Event bus and schemas; Python, TypeScript, Rust, Go implementations | `abxbus/` (`main`) |
+| `android-archivebox` | Kotlin/Compose client and Android share flow | `android-archivebox/` (`main`) |
+| `electron-archivebox` | Electron desktop client and Docker-based local server controls | `electron-archivebox/` (`main`) |
+| `ios-archivebox` | Swift iOS/iPadOS/macOS client, share/Safari extensions, `ServerApp` companion | Existing sibling `../ios-archivebox/` (`main`) |
+| `archivebox-browser-extension` | WXT browser extension, URL collection and persona sync | Existing sibling `../archivebox-browser-extension/` (`main`) |
+| `debian-archivebox` | Debian package wrapper | `debian-archivebox/` (`main`) |
+| `homebrew-archivebox` | Homebrew tap and bottles | `homebrew-archivebox/` (`main`) |
+| `docker-archivebox` | Docker deployment definitions | `docker-archivebox/` (`main`) |
+| `docs` | Documentation repository | `docs/` (`main`) |
+| `archivebox-wiki` | Separate GitHub wiki repository | `archivebox-wiki/` (`main`) |
+
+Use the existing canonical checkout even when it is outside this root; do not
+clone a second copy to match a path in an example. The former `archivebox-macos`
+prototype is removed; maintained Apple server work belongs in
+`../ios-archivebox/ServerApp`. Historical docs and feature worktrees are not
+workspace members. Root `evals/`, `bin/`, and `skills/` contain maintained workspace tooling;
+`old/` preserves historical ArchiveBox design notes and experiments.
 
 The root checkout is a `uv` project with editable path dependencies on all five
 packages. Its generated local `uv.lock` and `.venv` provide one consistent
@@ -33,7 +54,7 @@ cd monorepo
 ./bin/setup.sh
 ```
 
-`bin/setup.sh` clones missing member repos, tries to fast-forward existing checkouts with `git pull --ff-only` while ignoring pull failures caused by local repo state, refreshes `bin/setup_monorepo.sh` hardlinks inside each member repo so they always match the root script, creates the root `.venv`, uses `abxpkg` to project required host build tools into `.venv/abxpkg/env/bin`, and then syncs the editable packages into the shared monorepo env.
+`bin/setup.sh` manages only the five Python core repos listed in `REPO_NAMES`; app, docs, and packaging repos use their own setup instructions. It clones missing core repos, tries to fast-forward existing checkouts with `git pull --ff-only` while ignoring pull failures caused by local repo state, refreshes `bin/setup_monorepo.sh` hardlinks inside each member repo so they always match the root script, creates the root `.venv`, uses `abxpkg` to project required host build tools into `.venv/abxpkg/env/bin`, and then syncs the editable packages into the shared monorepo env.
 
 ```bash
 uv sync --all-extras --all-groups --no-cache --active
@@ -57,7 +78,10 @@ cd abxbus
 
 ## Workflow Rules
 
-- Always use `uv` for everything. Do not use `pip` or raw `python3 ...` directly.
+- Use one canonical checkout per project; do not create extra clones or worktrees.
+- Keep intentional collections under ignored `archivebox/data/` or `~/archivebox/data/`. Put one-off evidence and scratch outputs outside the source tree (for example, `../workspace-artifacts/` or the system temporary directory).
+- Keep runtime databases, profiles, captures, build outputs, and VM images out of commits. `.gitignore` protects untracked artifacts; it cannot remove objects already retained by history or local checkpoint refs.
+- Always use `uv` for Python work. Do not use `pip` or raw `python3 ...` directly.
 - If you need Python directly, use `uv run python ...`.
 - Do not use `py_compile` for syntax checks. Use `uv run prek run --all-files`.
 - `prek` is the main sweep command. It runs the repo checks together, including tools like Ruff, Ty, Pyright, Prettier, and related hooks.
@@ -68,9 +92,20 @@ cd abxbus
 ## Branches
 
 - `archivebox` develops on `dev`.
-- `abxbus`, `abxpkg`, `abx-plugins`, and `abx-dl` develop on `main`.
+- Every other project listed above develops on `main`. Preserve existing uncommitted work when switching context.
 
 ## Automatic Releases
+
+`abxpkg`, `abx-plugins`, `abx-dl`, `electron-archivebox`, `android-archivebox`,
+and both apps in `ios-archivebox` share the `1.13.0` release baseline. Subsequent
+patch releases remain independent; matching versions do not imply matching
+release dates or replace dependency compatibility pins. `archivebox` and `abxbus`
+keep their own version series. App build counters and the bundled ArchiveBox
+engine version remain separate from the app marketing version.
+
+Publish Python packages in dependency order (`abxpkg` → `abx-plugins` → `abx-dl`).
+The existing cascade updates exact dependency pins and lockfile artifacts only
+after publication; do not point them at unpublished baseline packages.
 
 Push a versioned change only to the repository you are working in. Its normal CI
 publishes the exact tested release and then calls the central release coordinator
@@ -81,6 +116,21 @@ lets its ordinary push CI continue the chain.
 Do not manually push, dispatch, or prepare downstream repositories. Package
 repositories know only their own release identity; the monorepo exclusively owns
 dependency order and downstream repository names.
+
+## App development and verification
+
+Read each app's README and development guide before running its build:
+
+- Android: JDK 17 and Android SDK; run `./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug`. Use a real emulator/device for sharing, connection discovery, and authenticated browsing acceptance.
+- Electron: use the committed `package-lock.json` with `npm ci`, then `npm run lint` and `npm start`. `npm run make` packages the app. Test server start/stop and connection flows against a real Docker engine/server when those paths change.
+- Apple: in `../ios-archivebox`, run `node scripts/prepare-safari.mjs`, `swift test`, and open `ArchiveBox.xcodeproj`. Use the ArchiveBox/ArchiveBoxMac targets for clients; the optional server companion has its own `ServerApp/README.md` and prepare/build scripts. Signing, TestFlight, and notarization are separate from local build acceptance.
+- Browser extension: use its pnpm lockfile and package scripts (`pnpm compile`, `pnpm build`, `pnpm test`); Safari integration is prepared by the Apple repo. Verify persona/cookie sync against the actual local server and browser.
+
+App connection work spans the server API, browser-session authentication, client
+connection storage, discovery, and share flows. Keep credentials scoped to the
+selected server. Server acceptance of a URL is not proof that capture completed.
+For preview changes, verify real saved outputs in the snapshot detail page,
+including expanded stack cards, missing optional artifacts, and raw-file links.
 
 ## Shared Runtime State
 
