@@ -1,0 +1,8 @@
+vendor/
+payload/
+dist/
+dist-settings/
+.runtime/
+.acceptance/
+.build/
+.swiftpm/
