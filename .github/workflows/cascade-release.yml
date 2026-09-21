@@ -165,7 +165,7 @@ jobs:
           installer_current = True
           if package_name == "abx-dl" and Path("bin/setup.sh").is_file():
               installer_current = (
-                  f'ABXPKG_PACKAGE="${{ABXPKG_PACKAGE:-abxpkg=={required["abxpkg"]}}}"'
+                  'ABXPKG_PACKAGE="' + chr(36) + '{ABXPKG_PACKAGE:-abxpkg==' + required["abxpkg"] + '}"'
                   in Path("bin/setup.sh").read_text()
               )
 
