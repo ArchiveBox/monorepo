@@ -64,8 +64,10 @@ def test_cascade_leaves_version_selection_to_the_consumer():
     assert "blake2b" in workflow
 
 
-def test_cascade_keeps_archivebox_abx_dl_image_on_the_released_version():
+def test_cascade_updates_package_locks_without_rewriting_floating_install_defaults():
     workflow = (PATH.parents[2] / "workflows" / "cascade-release.yml").read_text()
 
-    assert 'if package_name == "abx-dl" and Path("Dockerfile").is_file():' in workflow
-    assert "ARG ABX_DL_IMAGE=archivebox/abx-dl:" in workflow
+    assert 'LOCK_ARGS=(uv lock --no-cache --no-sources --find-links "$WHEEL_DIR")' in workflow
+    assert '--upgrade-package "$requirement"' in workflow
+    assert "dockerfile_path.write_text" not in workflow
+    assert "setup_path.write_text" not in workflow
