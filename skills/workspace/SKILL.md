@@ -28,7 +28,7 @@ sibling checkouts for `ios-archivebox` and `archivebox-browser-extension`.
 
 - Capture lifecycle and generic orchestration: `abx-dl`; plugin behavior, Chrome, and preview templates: `abx-plugins`; persistence/admin/API: `archivebox`.
 - Android: `android-archivebox` (Gradle). Desktop cross-platform: `electron-archivebox` (npm/Electron). Apple clients and macOS server: existing `../ios-archivebox` (Swift/Xcode and `ServerApp`). Browser integration: existing `../archivebox-browser-extension` (pnpm/WXT).
-- Packaging: `debian-archivebox`, `homebrew-archivebox`, `docker-archivebox`. Docs and wiki share one `docs/` checkout with two synchronized remotes (`origin` and `wiki`). Fetch/merge both publication branches before edits; use the README dual-push configuration and verify both remote `master` SHAs match after publishing. Never recreate `archivebox-wiki/`. Do not recreate deleted historical docs worktrees or the macOS prototype.
+- Packaging: `debian-archivebox`, `homebrew-archivebox`, `docker-archivebox`. Docs and wiki share one `docs/` checkout with two synchronized remotes (`origin` and `wiki`). Fetch/merge both publication branches before edits; use the README dual-push configuration and verify both remote `master` SHAs match after publishing.
 - Consult each project's README, AGENTS, and relevant development guide for its toolchain and test surface; the shared uv setup covers only the Python core.
 
 ## Keep source and runtime data separate

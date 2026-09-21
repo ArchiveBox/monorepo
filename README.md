@@ -23,12 +23,9 @@ workspace setup, shared guidance, and release coordination.
 | `docker-archivebox` | Docker deployment definitions | `docker-archivebox/` (`main`) |
 | `docs` | Documentation and GitHub wiki: one checkout, two synchronized remotes | `docs/` (`main`) |
 
-Use the existing canonical checkout even when it is outside this root; do not
-clone a second copy to match a path in an example. The former `archivebox-macos`
-prototype is removed; maintained Apple server work belongs in
-`../ios-archivebox/ServerApp`. Historical docs and feature worktrees are not
-workspace members. Root `evals/`, `bin/`, and `skills/` contain maintained workspace tooling;
-`old/` preserves historical ArchiveBox design notes and experiments.
+Use one canonical checkout per project at the locations above. Apple server
+work belongs in `../ios-archivebox/ServerApp`. Root `evals/`, `bin/`, and `skills/`
+contain workspace tooling; `old/` contains historical design notes and experiments.
 
 The root checkout is a `uv` project with editable path dependencies on all five
 packages. Its generated local `uv.lock` and `.venv` provide one consistent
@@ -181,8 +178,8 @@ including expanded stack cards, missing optional artifacts, and raw-file links.
 ## Documentation and wiki synchronization
 
 `docs/` is the single canonical checkout for both `ArchiveBox/docs.git` (`origin`)
-and `ArchiveBox/ArchiveBox.wiki.git` (`wiki`). Do not create an `archivebox-wiki/`
-checkout. Local `main` publishes to `master` on both existing remotes.
+and `ArchiveBox/ArchiveBox.wiki.git` (`wiki`). Local `main` publishes to `master`
+on both remotes.
 
 Configure a fresh checkout once:
 
