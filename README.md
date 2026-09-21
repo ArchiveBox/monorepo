@@ -21,8 +21,7 @@ workspace setup, shared guidance, and release coordination.
 | `debian-archivebox` | Debian package wrapper | `debian-archivebox/` (`main`) |
 | `homebrew-archivebox` | Homebrew tap and bottles | `homebrew-archivebox/` (`main`) |
 | `docker-archivebox` | Docker deployment definitions | `docker-archivebox/` (`main`) |
-| `docs` | Documentation repository | `docs/` (`main`) |
-| `archivebox-wiki` | Separate GitHub wiki repository | `archivebox-wiki/` (`main`) |
+| `docs` | Documentation and GitHub wiki: one checkout, two synchronized remotes | `docs/` (`main`) |
 
 Use the existing canonical checkout even when it is outside this root; do not
 clone a second copy to match a path in an example. The former `archivebox-macos`
@@ -178,3 +177,28 @@ including expanded stack cards, missing optional artifacts, and raw-file links.
 - Usage: `archivebox` uses `abx-dl` to install plugin binaries, run snapshot downloads, and handle plugin-facing runtime work.
 - Boundary: `archivebox` should never know about individual plugins or their resources such as Chrome, and it should not re-implement functionality that already belongs in `abx-dl`.
 - Runtime model: `archivebox` listens to the `abx-dl` event stream, projects events into its database, and injects events back to steer `abx-dl`. `abx-dl` owns the actual orchestration runtime for snapshot execution and installs.
+
+## Documentation and wiki synchronization
+
+`docs/` is the single canonical checkout for both `ArchiveBox/docs.git` (`origin`)
+and `ArchiveBox/ArchiveBox.wiki.git` (`wiki`). Do not create an `archivebox-wiki/`
+checkout. Local `main` publishes to `master` on both existing remotes.
+
+Configure a fresh checkout once:
+
+```bash
+cd docs
+git remote add wiki https://github.com/ArchiveBox/ArchiveBox.wiki.git
+git config --replace-all remote.origin.pushurl https://github.com/ArchiveBox/docs.git
+git config --add remote.origin.pushurl https://github.com/ArchiveBox/ArchiveBox.wiki.git
+git config remote.origin.push refs/heads/main:refs/heads/master
+git config remote.wiki.push refs/heads/main:refs/heads/master
+git branch --set-upstream-to=origin/master main
+```
+
+Before editing, `git fetch --all` and merge changes from both `origin/master` and
+`wiki/master`, including edits made through GitHub's wiki UI. Publish with `git push`
+to update both destinations. These pushes are sequential, not atomic: if either
+fails, reconcile that remote and push again. Verify `git ls-remote origin refs/heads/master`
+and `git ls-remote wiki refs/heads/master` report the same commit before considering
+publication complete. Do not force-push or mirror unrelated refs.
