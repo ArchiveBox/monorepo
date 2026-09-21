@@ -162,7 +162,14 @@ jobs:
               )
               docker_parent_current = bool(docker_parent and docker_parent.group(1) == released_version)
 
-          if all(downstream_lock.get(name) == version for name, version in required.items()) and docker_parent_current:
+          installer_current = True
+          if package_name == "abx-dl" and Path("bin/setup.sh").is_file():
+              installer_current = (
+                  f'ABXPKG_PACKAGE="${{ABXPKG_PACKAGE:-abxpkg=={required["abxpkg"]}}}"'
+                  in Path("bin/setup.sh").read_text()
+              )
+
+          if all(downstream_lock.get(name) == version for name, version in required.items()) and docker_parent_current and installer_current:
               print("consumed")
           else:
               print("needed")
@@ -366,6 +373,7 @@ jobs:
           import os
           import re
           import sys
+          import tomllib
           from pathlib import Path
 
           package_name, package_version = sys.argv[1:]
@@ -437,6 +445,18 @@ jobs:
                   count=1,
               )
               dockerfile_path.write_text(dockerfile)
+
+          setup_path = Path("bin/setup.sh")
+          if package_name == "abx-dl" and setup_path.is_file():
+              locked = {p["name"]: p["version"] for p in tomllib.loads(Path("uv.lock").read_text())["package"]}
+              setup, count = re.subn(
+                  r"(ABXPKG_PACKAGE=\"\$\{ABXPKG_PACKAGE:-abxpkg==)[^}]+",
+                  lambda match: match[1] + locked["abxpkg"],
+                  setup_path.read_text(),
+              )
+              if count != 1:
+                  raise SystemExit("Expected one installer ABXPKG_PACKAGE default")
+              setup_path.write_text(setup)
           PY
           uv lock --check --no-cache --no-sources
           uv run --no-cache --no-project python - "${REQUIRED_INTERNAL[@]}" <<'PY'
