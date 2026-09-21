@@ -2,6 +2,12 @@
 
 This workspace contains the ArchiveBox development repos. Keep `archivebox` on `dev`; keep every other repo on `main`.
 
+## Checkout Policy
+
+- Work only in the single canonical checkout for each project.
+- Do not create additional worktrees or duplicate clones in this workspace.
+- Keep scratch data, capture outputs, and evidence outside the source checkouts.
+
 ## Shared Standards
 
 - Use `uv` and `uv run` for Python commands. Do not use system `python`, direct `.venv/bin/python`, or `pip` commands.
