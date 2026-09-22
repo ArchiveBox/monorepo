@@ -15,6 +15,11 @@ on:
         description: Candidate artifact containing the published wheel and sdist
         required: true
         type: string
+      upstream_run_id:
+        description: Run containing the tested artifacts when recovering a release
+        required: false
+        default: ""
+        type: string
     secrets:
       release_token:
         description: Token allowed to push the immediate dependent repository
@@ -56,7 +61,7 @@ jobs:
         with:
           name: ${{ inputs.upstream_artifact_name }}
           path: ${{ runner.temp }}/public-release
-          run-id: ${{ github.event.workflow_run.id }}
+          run-id: ${{ inputs.upstream_run_id || github.event.workflow_run.id }}
           github-token: ${{ github.token }}
 
       - name: Resolve dependency edge

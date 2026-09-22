@@ -21,6 +21,18 @@ def test_increment(version, scheme, expected):
     assert MODULE.increment(version, scheme) == expected
 
 
+def test_next_rc_cycle_moves_past_published_stable():
+    assert MODULE.next_rc_after_stable("0.9.35rc657", "0.9.36") == "0.9.37rc1"
+
+
+def test_next_rc_cycle_starts_after_matching_stable_source():
+    assert MODULE.next_rc_after_stable("0.9.36", "0.9.36") == "0.9.37rc1"
+
+
+def test_next_rc_cycle_keeps_rc_when_stable_has_not_passed_it():
+    assert MODULE.next_rc_after_stable("0.9.37rc1", "0.9.36") is None
+
+
 def test_unreleased_version_is_reserved_without_bump():
     assert MODULE.classify("head", MODULE.VersionState()) == "reserve"
 

@@ -33,6 +33,28 @@ def increment(version: str, scheme: str) -> str:
     raise ValueError(f"Cannot {scheme}-bump {version}")
 
 
+def version_key(version: str) -> tuple[int, int, int, int, int]:
+    match = VERSION_RE.fullmatch(version)
+    if not match:
+        raise ValueError(f"Unsupported version: {version}")
+    major, minor, patch, rc = match.groups()
+    return (int(major), int(minor), int(patch), 0 if rc is not None else 1, int(rc or 0))
+
+
+def next_rc_after_stable(source: str, stable: str | None) -> str | None:
+    """Start a new patch RC cycle when stable has passed the source RC."""
+    if stable is None:
+        return None
+    source_key = version_key(source)
+    stable_key = version_key(stable)
+    if "rc" in source and stable_key <= source_key:
+        return None
+    if "rc" not in source and stable_key < source_key:
+        return None
+    major, minor, patch, _ = VERSION_RE.fullmatch(stable).groups()
+    return f"{major}.{minor}.{int(patch) + 1}rc1"
+
+
 def classify(head: str, state: VersionState) -> str:
     owners = {owner for owner in (state.candidate_owner, state.release_owner) if owner}
     if len(owners) > 1:
@@ -53,6 +75,16 @@ def git(*args: str) -> str:
 def remote_owner(ref: str) -> str | None:
     output = git("ls-remote", "origin", ref)
     return output.split()[0] if output else None
+
+
+def latest_stable_version(tag_prefix: str) -> str | None:
+    versions = []
+    for line in git("ls-remote", "--tags", "origin", f"refs/tags/{tag_prefix}*").splitlines():
+        ref = line.split()[-1].removesuffix("^{}")
+        match = re.fullmatch(rf"refs/tags/{re.escape(tag_prefix)}(\d+\.\d+\.\d+)", ref)
+        if match:
+            versions.append(match.group(1))
+    return max(versions, key=version_key) if versions else None
 
 
 def registry_url(package: str, version: str) -> str:
@@ -93,19 +125,28 @@ def main() -> None:
     scheme = os.environ["RELEASE_VERSION_SCHEME"]
     head = git("rev-parse", "HEAD")
     remote_head = remote_owner(f"refs/heads/{branch}")
-    version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+    source_version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+    version = source_version
     if not VERSION_RE.fullmatch(version):
         raise SystemExit(f"Unsupported source version: {version}")
     if remote_head != head:
         output(action="stale", version=version, candidate_tag=f"release-candidate/{version}")
         return
 
-    action = classify(head, state_for(package, version, tag_prefix))
+    stable_version = latest_stable_version(tag_prefix) if branch == "dev" and scheme == "rc" else None
+    version_after_stable = next_rc_after_stable(version, stable_version)
+    if version_after_stable is not None:
+        version = version_after_stable
+        while classify(head, state_for(package, version, tag_prefix)) == "occupied":
+            version = increment(version, scheme)
+        action = "bump"
+    else:
+        action = classify(head, state_for(package, version, tag_prefix))
     while action == "occupied":
         version = increment(version, scheme)
         action = classify(head, state_for(package, version, tag_prefix))
     output(
-        action="bump" if version != tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"] else action,
+        action="bump" if version != source_version else action,
         version=version,
         candidate_tag=f"release-candidate/{version}",
     )
