@@ -21,6 +21,14 @@ def test_increment(version, scheme, expected):
     assert MODULE.increment(version, scheme) == expected
 
 
+def test_stable_release_target_selects_requested_version_without_regression():
+    assert MODULE.apply_version_floor("0.9.36", "0.9.40", "patch") == "0.9.40"
+    assert MODULE.apply_version_floor("0.9.41", "0.9.40", "patch") == "0.9.41"
+    assert MODULE.apply_version_floor("0.9.36", "", "patch") == "0.9.36"
+    with pytest.raises(ValueError, match="stable release target"):
+        MODULE.apply_version_floor("0.9.36", "0.9.40rc1", "patch")
+
+
 def test_next_rc_cycle_moves_past_published_stable():
     assert MODULE.next_rc_after_stable("0.9.35rc657", "0.9.36") == "0.9.37rc1"
 

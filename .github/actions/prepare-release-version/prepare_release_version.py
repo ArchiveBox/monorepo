@@ -55,6 +55,14 @@ def next_rc_after_stable(source: str, stable: str | None) -> str | None:
     return f"{major}.{minor}.{int(patch) + 1}rc1"
 
 
+def apply_version_floor(source: str, minimum: str, scheme: str) -> str:
+    if not minimum:
+        return source
+    if scheme == "patch" and "rc" in minimum:
+        raise ValueError("A stable release target cannot be a release candidate")
+    return max((source, minimum), key=version_key)
+
+
 def classify(head: str, state: VersionState) -> str:
     owners = {owner for owner in (state.candidate_owner, state.release_owner) if owner}
     if len(owners) > 1:
@@ -126,7 +134,7 @@ def main() -> None:
     head = git("rev-parse", "HEAD")
     remote_head = remote_owner(f"refs/heads/{branch}")
     source_version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
-    version = source_version
+    version = apply_version_floor(source_version, os.environ.get("RELEASE_MINIMUM_VERSION", ""), scheme)
     if not VERSION_RE.fullmatch(version):
         raise SystemExit(f"Unsupported source version: {version}")
     if remote_head != head:

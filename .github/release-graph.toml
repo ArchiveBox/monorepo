@@ -23,7 +23,7 @@ update_mode = "exact"
 repository = "ArchiveBox/abx-dl"
 tag_prefix = "v"
 downstream_repository = "ArchiveBox/ArchiveBox"
-downstream_branch = "dev"
+downstream_branch = "main"
 update_mode = "exact"
 
 [packages.archivebox]
