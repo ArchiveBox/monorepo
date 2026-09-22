@@ -103,11 +103,17 @@ Publish Python packages in dependency order (`abxpkg` → `abx-plugins` → `abx
 The existing cascade updates exact dependency pins and lockfile artifacts only
 after publication; do not point them at unpublished baseline packages.
 
-Push a versioned change only to the repository you are working in. Its normal CI
+Push source changes only to the repository you are working in. Its normal CI
+reserves and bumps versions automatically, then
 publishes the exact tested release and then calls the central release coordinator
 in this monorepo. The coordinator discovers the immediate dependent from
-`.github/release-graph.toml`, updates and version-bumps that repository once, and
+`.github/release-graph.toml`, updates that repository's dependency pins, and
 lets its ordinary push CI continue the chain.
+
+ArchiveBox stable releases are prepared on `main`; the coordinator routes downloader
+updates there. Its optional `STABLE_RELEASE_VERSION_FLOOR` repository variable
+selects a minimum stable target (for example `0.9.40`) without editing version
+files. Later source changes continue the normal automatic patch increments.
 
 Do not manually push, dispatch, or prepare downstream repositories. Package
 repositories know only their own release identity; the monorepo exclusively owns
