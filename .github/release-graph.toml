@@ -32,8 +32,8 @@ tag_prefix = "v"
 downstream_repository = ""
 downstream_branch = ""
 update_mode = ""
-dispatch_repositories = ["ArchiveBox/homebrew-archivebox", "ArchiveBox/debian-archivebox", "ArchiveBox/ios-archivebox"]
-dispatch_workflows = ["update-archivebox-dev.yml", "build.yml", "release.yml"]
+dispatch_repositories = ["ArchiveBox/homebrew-archivebox", "ArchiveBox/debian-archivebox", "ArchiveBox/ios-archivebox", "ArchiveBox/android-archivebox", "ArchiveBox/electron-archivebox"]
+dispatch_workflows = ["update-archivebox-dev.yml", "build.yml", "release.yml", "ci.yml", "ci.yml"]
 
 [source_pins.archivebox-browser-extension]
 repository = "ArchiveBox/archivebox-browser-extension"
