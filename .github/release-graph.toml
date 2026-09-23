@@ -34,3 +34,9 @@ downstream_branch = ""
 update_mode = ""
 dispatch_repositories = ["ArchiveBox/homebrew-archivebox", "ArchiveBox/debian-archivebox", "ArchiveBox/ios-archivebox"]
 dispatch_workflows = ["update-archivebox-dev.yml", "build.yml", "release.yml"]
+
+[source_pins.archivebox-browser-extension]
+repository = "ArchiveBox/archivebox-browser-extension"
+downstream_repository = "ArchiveBox/ios-archivebox"
+downstream_branch = "main"
+pin_file = "scripts/prepare-safari.mjs"

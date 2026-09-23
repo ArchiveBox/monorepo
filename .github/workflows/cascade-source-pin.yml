@@ -1,0 +1,111 @@
+name: Cascade verified source pin
+
+on:
+  workflow_call:
+    inputs:
+      source_tag:
+        description: Exact version tag of the tested browser-extension release
+        required: true
+        type: string
+      source_sha:
+        description: Exact tested source commit behind that tag
+        required: true
+        type: string
+      artifact_name:
+        description: Store packages artifact produced by this release run
+        required: true
+        type: string
+    secrets:
+      release_token:
+        description: Token allowed to push the graph's immediate dependent
+        required: true
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: safari-source-pin-main
+  cancel-in-progress: false
+
+jobs:
+  pin:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout central release graph and verifier
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ArchiveBox/monorepo
+          ref: main
+          path: coordinator
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          version: "0.11.3"
+          enable-cache: false
+
+      - name: Resolve source pin edge
+        id: edge
+        env:
+          CALLER_REPOSITORY: ${{ github.repository }}
+        run: |
+          uv run --no-project python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          edge = tomllib.loads(Path('coordinator/.github/release-graph.toml').read_text())['source_pins']['archivebox-browser-extension']
+          if edge['repository'].lower() != os.environ['CALLER_REPOSITORY'].lower():
+              raise SystemExit('Source pin release came from the wrong repository')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              print(f"repository={edge['repository']}", file=output)
+              print(f"downstream_repository={edge['downstream_repository']}", file=output)
+              print(f"downstream_branch={edge['downstream_branch']}", file=output)
+          PY
+
+      - name: Checkout exact tested extension source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ${{ steps.edge.outputs.repository }}
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+          path: source
+          persist-credentials: false
+
+      - name: Download exact tested store packages
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: candidate
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify tag, tested packages, and source bundle
+        env:
+          SOURCE_TAG: ${{ inputs.source_tag }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          ARTIFACT_NAME: ${{ inputs.artifact_name }}
+        run: uv run --no-project python coordinator/bin/cascade_source_pin.py verify
+
+      - name: Checkout immediate dependent
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ${{ steps.edge.outputs.downstream_repository }}
+          ref: ${{ steps.edge.outputs.downstream_branch }}
+          fetch-depth: 0
+          path: downstream
+          token: ${{ secrets.release_token }}
+
+      - name: Advance only the Safari extension source pin
+        env:
+          SOURCE_TAG: ${{ inputs.source_tag }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          ARTIFACT_NAME: ${{ inputs.artifact_name }}
+        run: uv run --no-project python coordinator/bin/cascade_source_pin.py pin
