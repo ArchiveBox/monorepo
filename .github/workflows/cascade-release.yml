@@ -294,7 +294,9 @@ jobs:
               (f"https://pypi.org/pypi/{project}/{version}/json", "urls", "digests"),
               (f"https://pypi.org/simple/{project}/", "files", "hashes"),
           )
-          for attempt in range(31):
+          # PyPI's Simple API advertises a 600-second cache lifetime. Allow a
+          # full stale cache cycle after upload, with a small publication margin.
+          for attempt in range(73):
               missing = []
               for url, files_key, hashes_key in endpoints:
                   request = Request(url, headers={"Accept": "application/vnd.pypi.simple.v1+json"})
@@ -319,7 +321,7 @@ jobs:
               if not missing:
                   print(f"PyPI JSON and Simple API contain the exact tested {package}=={version} artifacts")
                   break
-              if attempt == 30:
+              if attempt == 72:
                   raise SystemExit(f"Timed out waiting for public PyPI visibility: {', '.join(missing)}")
               print(f"Waiting for public PyPI visibility: {', '.join(missing)}", flush=True)
               time.sleep(10)
