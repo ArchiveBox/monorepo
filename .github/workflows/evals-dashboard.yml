@@ -8,7 +8,7 @@ on:
       - .github/actions/report-ci-evals/**
       - .github/workflows/evals-dashboard.yml
   schedule:
-    - cron: "17,47 * * * *"
+    - cron: "19,49 * * * *"
   workflow_dispatch:
     inputs:
       log_budget:
