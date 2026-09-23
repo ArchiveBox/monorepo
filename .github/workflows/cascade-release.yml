@@ -326,10 +326,16 @@ jobs:
               print(f"Waiting for public PyPI visibility: {', '.join(missing)}", flush=True)
               time.sleep(10)
           PY
-          uv run --no-cache --isolated --no-project \
-            --no-sources --default-index https://pypi.org/simple \
-            --with "$UPSTREAM_PACKAGE==$UPSTREAM_VERSION" \
-            python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" <<'PY'
+          # PyPI varies its cached Simple API response by Accept header. The
+          # public JSON variant can be fresh while uv still sees an older one.
+          # Probe the actual installer; only its exact missing-version result
+          # is treated as publication propagation.
+          PUBLIC_CHECK_LOG="$RUNNER_TEMP/public-index-check.log"
+          for attempt in {0..72}; do
+            if UV_NO_COLOR=1 uv run --no-cache --isolated --no-project \
+              --no-config --no-sources --default-index https://pypi.org/simple \
+              --with "$UPSTREAM_PACKAGE==$UPSTREAM_VERSION" \
+              python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" >"$PUBLIC_CHECK_LOG" 2>&1 <<'PY'
           import importlib.metadata
           import re
           import sys
@@ -350,6 +356,22 @@ jobs:
                   f"Installed {package_name} is {distributions[0].version}, not {package_version}"
               )
           PY
+            then
+              cat "$PUBLIC_CHECK_LOG"
+              break
+            fi
+            if ! grep -Fq "there is no version of ${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}" "$PUBLIC_CHECK_LOG"; then
+              cat "$PUBLIC_CHECK_LOG" >&2
+              exit 1
+            fi
+            if (( attempt == 72 )); then
+              cat "$PUBLIC_CHECK_LOG" >&2
+              echo "Timed out waiting for uv to see public ${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}" >&2
+              exit 1
+            fi
+            echo "Waiting for uv's public PyPI index to list ${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}"
+            sleep 10
+          done
 
       - name: Update the immediate dependency
         if: steps.state.outputs.needed == 'true'
