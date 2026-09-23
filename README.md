@@ -111,9 +111,9 @@ in this monorepo. The coordinator discovers the immediate dependent from
 lets its ordinary push CI continue the chain.
 
 ArchiveBox stable releases are prepared on `main`; the coordinator routes downloader
-updates there. Its optional `STABLE_RELEASE_VERSION_FLOOR` repository variable
-selects a minimum stable target (for example `0.9.40`) without editing version
-files. Later source changes continue the normal automatic patch increments.
+updates there. CI chooses the next available version from source and release history,
+including promoting RC source when it lands on `main`. No version target or manual
+dependency pin changes are needed.
 
 Do not manually push, dispatch, or prepare downstream repositories. Package
 repositories know only their own release identity; the monorepo exclusively owns

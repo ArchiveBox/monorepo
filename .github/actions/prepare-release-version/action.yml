@@ -15,10 +15,6 @@ inputs:
   version-scheme:
     description: Version component to increment when the source version is occupied
     required: true
-  minimum-version:
-    description: Optional release target floor; never decreases an existing version
-    required: false
-    default: ""
 
 outputs:
   action:
@@ -44,7 +40,6 @@ runs:
         RELEASE_BRANCH: ${{ inputs.branch }}
         RELEASE_TAG_PREFIX: ${{ inputs.tag-prefix }}
         RELEASE_VERSION_SCHEME: ${{ inputs.version-scheme }}
-        RELEASE_MINIMUM_VERSION: ${{ inputs.minimum-version }}
       run: uv run --no-cache --no-project python "${{ github.action_path }}/prepare_release_version.py"
 
     - name: Reserve or bump version

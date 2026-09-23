@@ -55,12 +55,10 @@ def next_rc_after_stable(source: str, stable: str | None) -> str | None:
     return f"{major}.{minor}.{int(patch) + 1}rc1"
 
 
-def apply_version_floor(source: str, minimum: str, scheme: str) -> str:
-    if not minimum:
-        return source
-    if scheme == "patch" and "rc" in minimum:
-        raise ValueError("A stable release target cannot be a release candidate")
-    return max((source, minimum), key=version_key)
+def stable_candidate(source: str, latest_stable: str | None) -> str:
+    """Promote RC source and avoid going behind the published stable line."""
+    candidate = source.split("rc", 1)[0]
+    return max((candidate, latest_stable or candidate), key=version_key)
 
 
 def classify(head: str, state: VersionState) -> str:
@@ -134,15 +132,17 @@ def main() -> None:
     head = git("rev-parse", "HEAD")
     remote_head = remote_owner(f"refs/heads/{branch}")
     source_version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
-    version = apply_version_floor(source_version, os.environ.get("RELEASE_MINIMUM_VERSION", ""), scheme)
+    version = source_version
     if not VERSION_RE.fullmatch(version):
         raise SystemExit(f"Unsupported source version: {version}")
     if remote_head != head:
         output(action="stale", version=version, candidate_tag=f"release-candidate/{version}")
         return
 
-    stable_version = latest_stable_version(tag_prefix) if branch == "dev" and scheme == "rc" else None
-    version_after_stable = next_rc_after_stable(version, stable_version)
+    stable_version = latest_stable_version(tag_prefix)
+    if scheme == "patch":
+        version = stable_candidate(version, stable_version)
+    version_after_stable = next_rc_after_stable(version, stable_version) if scheme == "rc" else None
     if version_after_stable is not None:
         version = version_after_stable
         while classify(head, state_for(package, version, tag_prefix)) == "occupied":
