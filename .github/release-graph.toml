@@ -32,5 +32,5 @@ tag_prefix = "v"
 downstream_repository = ""
 downstream_branch = ""
 update_mode = ""
-dispatch_repositories = ["ArchiveBox/homebrew-archivebox", "ArchiveBox/debian-archivebox"]
-dispatch_workflows = ["update-archivebox-dev.yml", "build.yml"]
+dispatch_repositories = ["ArchiveBox/homebrew-archivebox", "ArchiveBox/debian-archivebox", "ArchiveBox/ios-archivebox"]
+dispatch_workflows = ["update-archivebox-dev.yml", "build.yml", "release.yml"]
