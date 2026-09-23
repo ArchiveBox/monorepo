@@ -267,20 +267,66 @@ jobs:
           release = {"info": {"version": version}, "urls": [artifact(sdists[0], "sdist"), artifact(wheels[0], "bdist_wheel")]}
           release_dir = Path(os.environ["RUNNER_TEMP"]) / f"resolved-release-{package}-{version}"
           release_dir.mkdir()
-          wheel_path = release_dir / wheels[0].name
-          wheel_path.write_bytes(wheels[0].read_bytes())
           (release_dir / "release.json").write_text(json.dumps(release))
 
           print(release_dir)
-          print(wheel_path)
           PY
           )
-          test "${#PUBLIC_ARTIFACT[@]}" -eq 2
+          test "${#PUBLIC_ARTIFACT[@]}" -eq 1
           WHEEL_DIR="${PUBLIC_ARTIFACT[0]}"
-          WHEEL_PATH="${PUBLIC_ARTIFACT[1]}"
           echo "wheel_dir=$WHEEL_DIR" >> "$GITHUB_OUTPUT"
+          uv run --no-cache --no-project python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" "$WHEEL_DIR/release.json" <<'PY'
+          import json
+          import re
+          import sys
+          import time
+          from urllib.error import HTTPError
+          from urllib.request import Request, urlopen
+
+          package, version, release_path = sys.argv[1:]
+          with open(release_path) as stream:
+              expected = {
+                  artifact["filename"]: artifact["digests"]["sha256"]
+                  for artifact in json.load(stream)["urls"]
+              }
+          project = re.sub(r"[-_.]+", "-", package).lower()
+          endpoints = (
+              (f"https://pypi.org/pypi/{project}/{version}/json", "urls", "digests"),
+              (f"https://pypi.org/simple/{project}/", "files", "hashes"),
+          )
+          for attempt in range(31):
+              missing = []
+              for url, files_key, hashes_key in endpoints:
+                  request = Request(url, headers={"Accept": "application/vnd.pypi.simple.v1+json"})
+                  try:
+                      with urlopen(request, timeout=15) as response:
+                          files = json.load(response)[files_key]
+                  except HTTPError as error:
+                      if error.code != 404:
+                          raise
+                      missing.append(f"{url}: HTTP 404")
+                      continue
+                  published = {
+                      item["filename"]: item[hashes_key].get("sha256")
+                      for item in files
+                      if item["filename"] in expected
+                  }
+                  for filename, digest in expected.items():
+                      if filename not in published:
+                          missing.append(f"{url}: {filename}")
+                      elif published[filename] != digest:
+                          raise SystemExit(f"{url}: {filename} digest differs from the tested artifact")
+              if not missing:
+                  print(f"PyPI JSON and Simple API contain the exact tested {package}=={version} artifacts")
+                  break
+              if attempt == 30:
+                  raise SystemExit(f"Timed out waiting for public PyPI visibility: {', '.join(missing)}")
+              print(f"Waiting for public PyPI visibility: {', '.join(missing)}", flush=True)
+              time.sleep(10)
+          PY
           uv run --no-cache --isolated --no-project \
-            --with "$WHEEL_PATH" \
+            --no-sources --default-index https://pypi.org/simple \
+            --with "$UPSTREAM_PACKAGE==$UPSTREAM_VERSION" \
             python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" <<'PY'
           import importlib.metadata
           import re
@@ -350,7 +396,7 @@ jobs:
             exit 1
           fi
 
-          LOCK_ARGS=(uv lock --no-cache --no-sources --find-links "$WHEEL_DIR")
+          LOCK_ARGS=(uv lock --no-cache --no-sources)
           for requirement in "${REQUIRED_INTERNAL[@]}"; do
             LOCK_ARGS+=(
               --upgrade-package "$requirement"
