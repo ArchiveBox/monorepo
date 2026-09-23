@@ -24,7 +24,7 @@ workspace setup, shared guidance, and release coordination.
 | `docs` | Documentation and GitHub wiki: one checkout, two synchronized remotes | `docs/` (`main`) |
 
 Use one canonical checkout per project at the locations above. Apple server
-work belongs in `../ios-archivebox/ServerApp`. Root `evals/`, `bin/`, and `skills/`
+work belongs in `../ios-archivebox/ServerApp`. Root `ci-dashboard/`, `bin/`, and `skills/`
 contain workspace tooling; `old/` contains historical design notes and experiments.
 
 The root checkout is a `uv` project with editable path dependencies on all five

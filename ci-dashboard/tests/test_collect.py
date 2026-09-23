@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from ..collect import (
+from collect import (
     aggregate_run,
     duration_ms,
     likely_test_job,
@@ -8,7 +8,7 @@ from ..collect import (
     parse_test_log,
     summarize_jobs,
 )
-from ..measure_import import measure
+from measure_import import measure
 
 
 def test_parse_pytest_counts_duration_and_slowest() -> None:

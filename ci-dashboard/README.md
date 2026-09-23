@@ -15,18 +15,20 @@ The collector is read-only. It never checks out a member repository, dispatches 
 ## Local preview
 
 ```bash
-GH_TOKEN="$(gh auth token)" uv run --no-project --python 3.13 evals/collect.py \
+GH_TOKEN="$(gh auth token)" uv run --no-project --python 3.13 ci-dashboard/collect.py \
     --runs-per-project 2 \
     --job-metadata-budget 10 \
     --log-budget 5
-uv run --no-project --python 3.13 -m http.server 4173 --directory evals/site
+uv run --no-project --python 3.13 -m http.server 4173 --directory ci-dashboard/site
 ```
 
-Open <http://127.0.0.1:4173/>. The generated `evals/site/data.json` is intentionally ignored.
+Run collector tests with `PYTHONPATH=ci-dashboard uv run --no-project --python 3.13 --with pytest pytest -q ci-dashboard/tests`.
+
+Open <http://127.0.0.1:4173/>. The generated `ci-dashboard/site/data.json` is tracked as a dashboard snapshot.
 
 ## Publication and permissions
 
-`.github/workflows/evals-dashboard.yml` publishes `evals/site/` to this repository's GitHub Pages site on relevant pushes, manual dispatch, and twice per hour. GitHub's scheduled workflows do not support a two-minute interval; the page checks for newly deployed JSON every two minutes without consuming a runner.
+`.github/workflows/evals-dashboard.yml` publishes `ci-dashboard/site/` to this repository's GitHub Pages site on relevant pushes, manual dispatch, and twice per hour. GitHub's scheduled workflows do not support a two-minute interval; the page checks for newly deployed JSON every two minutes without consuming a runner.
 
 Scheduled, push, and manual refreshes inspect at most ten new logs. Manual dispatches default to 250 job lists fetched with bounded concurrency, providing resumable history backfills across all five projects without making every scheduled run expensive.
 

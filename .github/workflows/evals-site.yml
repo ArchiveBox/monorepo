@@ -2,7 +2,7 @@ name: Publish CI dashboard layout
 on:
   push:
     branches: [main]
-    paths: ['evals/site/**', '.github/workflows/evals-site.yml']
+    paths: ['ci-dashboard/site/**', '.github/workflows/evals-site.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -22,10 +22,10 @@ jobs:
         with:
           ref: main
       - name: Restore published dashboard data
-        run: curl --fail --silent --show-error --location --max-time 60 https://archivebox.github.io/monorepo/data.json --output evals/site/data.json
+        run: curl --fail --silent --show-error --location --max-time 60 https://archivebox.github.io/monorepo/data.json --output ci-dashboard/site/data.json
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: evals/site
+          path: ci-dashboard/site
       - uses: actions/deploy-pages@v4
         id: deployment
