@@ -1,5 +1,6 @@
 import importlib.util
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -86,16 +87,26 @@ def test_cascade_leaves_version_selection_to_the_consumer():
     assert "NEXT_VERSION" not in workflow
     assert "bump_version.sh" not in workflow
     assert "version_scheme" not in graph
-    assert "time.sleep" not in workflow
-    assert "pypi.org/pypi" not in workflow
+    assert "time.sleep(10)" in workflow
+    assert "pypi.org/pypi" in workflow
+    assert "pypi.org/simple" in workflow
     assert "actions/download-artifact" in workflow
     assert "blake2b" in workflow
+
+
+def test_downloader_cascade_updates_archivebox_development_branch():
+    graph = tomllib.loads((PATH.parents[2] / "release-graph.toml").read_text())
+    edge = graph["packages"]["abx-dl"]
+
+    assert edge["downstream_repository"] == "ArchiveBox/ArchiveBox"
+    assert edge["downstream_branch"] == "dev"
 
 
 def test_cascade_updates_package_locks_without_rewriting_floating_install_defaults():
     workflow = (PATH.parents[2] / "workflows" / "cascade-release.yml").read_text()
 
-    assert 'LOCK_ARGS=(uv lock --no-cache --no-sources --find-links "$WHEEL_DIR")' in workflow
+    assert 'LOCK_ARGS=(uv lock --no-cache --no-sources)' in workflow
+    assert "--find-links" not in workflow
     assert '--upgrade-package "$requirement"' in workflow
     assert "dockerfile_path.write_text" not in workflow
     assert "setup_path.write_text" not in workflow
