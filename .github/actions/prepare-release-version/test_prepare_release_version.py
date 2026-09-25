@@ -36,6 +36,15 @@ def test_next_rc_cycle_starts_after_matching_stable_source():
     assert MODULE.next_rc_after_stable("0.9.36", "0.9.36") == "0.9.37rc1"
 
 
+def test_next_rc_cycle_starts_after_stable_source_ahead_of_published_release():
+    assert MODULE.next_rc_after_stable("0.9.54", "0.9.53") == "0.9.55rc1"
+    assert MODULE.next_rc_after_stable("0.9.54", None) == "0.9.55rc1"
+
+
+def test_next_rc_cycle_respects_newer_published_stable():
+    assert MODULE.next_rc_after_stable("0.9.54", "0.9.56") == "0.9.57rc1"
+
+
 def test_next_rc_cycle_keeps_rc_when_stable_has_not_passed_it():
     assert MODULE.next_rc_after_stable("0.9.37rc1", "0.9.36") is None
 

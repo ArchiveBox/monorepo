@@ -42,16 +42,14 @@ def version_key(version: str) -> tuple[int, int, int, int, int]:
 
 
 def next_rc_after_stable(source: str, stable: str | None) -> str | None:
-    """Start a new patch RC cycle when stable has passed the source RC."""
-    if stable is None:
+    """Start an RC cycle after a stable source or published stable release."""
+    if "rc" not in source:
+        base = max((source, stable or source), key=version_key)
+    elif stable is not None and version_key(stable) > version_key(source):
+        base = stable
+    else:
         return None
-    source_key = version_key(source)
-    stable_key = version_key(stable)
-    if "rc" in source and stable_key <= source_key:
-        return None
-    if "rc" not in source and stable_key < source_key:
-        return None
-    major, minor, patch, _ = VERSION_RE.fullmatch(stable).groups()
+    major, minor, patch, _ = VERSION_RE.fullmatch(base).groups()
     return f"{major}.{minor}.{int(patch) + 1}rc1"
 
 
