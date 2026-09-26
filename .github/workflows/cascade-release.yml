@@ -326,52 +326,6 @@ jobs:
               print(f"Waiting for public PyPI visibility: {', '.join(missing)}", flush=True)
               time.sleep(10)
           PY
-          # PyPI varies its cached Simple API response by Accept header. The
-          # public JSON variant can be fresh while uv still sees an older one.
-          # Probe the actual installer; only its exact missing-version result
-          # is treated as publication propagation.
-          PUBLIC_CHECK_LOG="$RUNNER_TEMP/public-index-check.log"
-          for attempt in {0..72}; do
-            if UV_NO_COLOR=1 uv run --no-cache --isolated --no-project \
-              --no-config --no-sources --default-index https://pypi.org/simple \
-              --with "$UPSTREAM_PACKAGE==$UPSTREAM_VERSION" \
-              python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" >"$PUBLIC_CHECK_LOG" 2>&1 <<'PY'
-          import importlib.metadata
-          import re
-          import sys
-
-          package_name, package_version = sys.argv[1:]
-          normalized_name = re.sub(r"[-_.]+", "-", package_name).lower()
-          distributions = [
-              distribution
-              for distribution in importlib.metadata.distributions()
-              if re.sub(r"[-_.]+", "-", distribution.metadata["Name"]).lower() == normalized_name
-          ]
-          if len(distributions) != 1:
-              raise SystemExit(
-                  f"Expected one installed {package_name} distribution, found {len(distributions)}"
-              )
-          if distributions[0].version != package_version:
-              raise SystemExit(
-                  f"Installed {package_name} is {distributions[0].version}, not {package_version}"
-              )
-          PY
-            then
-              cat "$PUBLIC_CHECK_LOG"
-              break
-            fi
-            if ! grep -Fq "there is no version of ${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}" "$PUBLIC_CHECK_LOG"; then
-              cat "$PUBLIC_CHECK_LOG" >&2
-              exit 1
-            fi
-            if (( attempt == 72 )); then
-              cat "$PUBLIC_CHECK_LOG" >&2
-              echo "Timed out waiting for uv to see public ${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}" >&2
-              exit 1
-            fi
-            echo "Waiting for uv's public PyPI index to list ${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}"
-            sleep 10
-          done
 
       - name: Update the immediate dependency
         if: steps.state.outputs.needed == 'true'
@@ -426,7 +380,30 @@ jobs:
               --upgrade-package "$requirement"
             )
           done
-          "${LOCK_ARGS[@]}"
+          # Resolve the actual downstream project as the publication probe.
+          # An isolated install succeeded while this lock still saw "no version"
+          # immediately afterwards: its different index request can hit another
+          # stale PyPI response. Keep the existing bounded propagation window,
+          # and fail immediately for every error other than this exact newly
+          # published package being absent. Never commit pins from a probe alone.
+          PUBLIC_CHECK_LOG="$RUNNER_TEMP/public-index-check.log"
+          for attempt in {0..72}; do
+            if UV_NO_COLOR=1 "${LOCK_ARGS[@]}" >"$PUBLIC_CHECK_LOG" 2>&1; then
+              cat "$PUBLIC_CHECK_LOG"
+              break
+            fi
+            if ! grep -Fq "there is no version of ${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}" "$PUBLIC_CHECK_LOG"; then
+              cat "$PUBLIC_CHECK_LOG" >&2
+              exit 1
+            fi
+            if (( attempt == 72 )); then
+              cat "$PUBLIC_CHECK_LOG" >&2
+              echo "Timed out waiting for downstream resolution of public ${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}" >&2
+              exit 1
+            fi
+            echo "Waiting for downstream resolution of public ${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}"
+            sleep 10
+          done
           uv run --no-cache --no-project python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" <<'PY'
           import json
           import os
