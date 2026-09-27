@@ -2,6 +2,8 @@
 
 This workspace contains the ArchiveBox development repos. Keep `archivebox` on `dev`; keep every other repo on `main`.
 
+Before changing ugNAS CI provisioning or runner routing, read [.github/runner-design.md](.github/runner-design.md) for the reasons and known limits of the design. Read live configuration for current settings.
+
 ## Checkout Policy
 
 - Work only in the single canonical checkout for each project.
