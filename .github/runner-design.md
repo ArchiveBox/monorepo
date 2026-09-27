@@ -19,12 +19,17 @@ variables, workflows, and TrueNAS app configuration for current settings.
   is a scheduling-time decision, not failover after a job starts; a race after
   selection remains. Hosted discovery itself can queue. Do not claim NAS solves
   that wait or add a second scheduler merely to avoid it.
-- **Eligibility is deliberately conservative.** Opt in existing Linux matrix
-  cells after real stock-container acceptance under concurrent load. One isolated
-  pass is insufficient: the CLI list million-row test passed alone but exceeded
-  its existing deadline under NAS contention. Keep it hosted until concurrent
-  evidence changes that conclusion; don't relax its assertion or timeout. Recheck
-  allowlists when test names change instead of copying names into this document.
+- **Ordinary Linux tests are eligible by default.** Genuine hosted-only
+  requirements belong in a `# ci-runner: hosted` test-file header, with a reason.
+  File discovery preserves those requirements through renames. Investigate
+  workload, container limits, storage and contention when a test times out;
+  a timeout alone does not establish that the NAS is unsuitable. Preserve the
+  test's correctness assertions while investigating.
+- **Use both pools.** Discovery assigns a bounded share of eligible jobs to the
+  existing availability check and leaves the remainder hosted. The operational
+  `UGNAS_CI_MAX_JOBS` setting controls that share and the number of idle workers
+  required by the check. Do not queue an entire hosted matrix behind a small
+  NAS pool. This is a capacity setting, not a list of test filenames.
 - **Trusted branch jobs only.** These workers share a private network and persist
   between jobs. Public PR code must remain hosted. Staging acceptance credentials
   belong in a branch-restricted GitHub environment, not runner mounts; its SSH
