@@ -34,6 +34,17 @@ variables, workflows, and TrueNAS app configuration for current settings.
   requiring every worker to be idle, and measure contention before expanding
   further. Do not queue an entire hosted matrix behind a small NAS pool. These
   are capacity settings, not lists of test filenames.
+- **Reserve NAS capacity for its other services.** The CI pool must leave about
+  20% CPU headroom for Plex and TrueNAS spikes. Persist resource limits through
+  TrueNAS app configuration; a live `docker update` alone is lost on redeploy.
+  The catalog's CPU field accepts whole numbers, so fractional quotas require
+  its supported custom Compose app configuration, preserving the stock image
+  and entrypoint. Do not shrink each worker below one effective CPU without
+  considering the application's admission policy: ArchiveBox intentionally
+  clamps concurrent snapshots to the rounded-up cgroup quota. A quota at or
+  below one CPU serializes captures, making overlap acceptance impossible even
+  when memory is plentiful. Budget the pool without changing those assertions
+  or bypassing application resource checks.
 - **Trusted branch jobs only.** These workers share a private network and persist
   between jobs. Public PR code must remain hosted. Staging acceptance credentials
   belong in a branch-restricted GitHub environment, not runner mounts; its SSH
