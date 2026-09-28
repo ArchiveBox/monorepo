@@ -323,7 +323,9 @@ jobs:
             exit 1
           fi
 
-          LOCK_ARGS=(uv lock --no-cache --no-sources)
+          # Retain the actual resolver's index/filtering diagnostics on failure;
+          # another HTTP client's cached metadata can disagree with this request.
+          LOCK_ARGS=(uv lock --verbose --no-cache --no-sources)
           for requirement in "${REQUIRED_INTERNAL[@]}"; do
             LOCK_ARGS+=(
               --upgrade-package "$requirement"
