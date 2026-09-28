@@ -294,16 +294,30 @@ jobs:
               (f"https://pypi.org/pypi/{project}/{version}/json", "urls", "digests"),
               (f"https://pypi.org/simple/{project}/", "files", "hashes"),
           )
+
+          def report_response(url, response, started):
+              # Disabling uv's local cache does not bypass PyPI's CDN. Retain
+              # the existing response's cache evidence so a publication delay
+              # can be distinguished from a stale edge response in real CI.
+              headers = {
+                  name: response.headers.get(name)
+                  for name in ("Date", "Age", "Cache-Control", "ETag", "X-Cache", "X-Cache-Hits", "X-PyPI-Last-Serial")
+              }
+              print(f"PyPI {url}: HTTP {response.status}, {time.monotonic() - started:.3f}s, {json.dumps(headers)}", flush=True)
+
           # PyPI's Simple API advertises a 600-second cache lifetime. Allow a
           # full stale cache cycle after upload, with a small publication margin.
           for attempt in range(73):
               missing = []
               for url, files_key, hashes_key in endpoints:
                   request = Request(url, headers={"Accept": "application/vnd.pypi.simple.v1+json"})
+                  started = time.monotonic()
                   try:
                       with urlopen(request, timeout=15) as response:
+                          report_response(url, response, started)
                           files = json.load(response)[files_key]
                   except HTTPError as error:
+                      report_response(url, error, started)
                       if error.code != 404:
                           raise
                       missing.append(f"{url}: HTTP 404")
