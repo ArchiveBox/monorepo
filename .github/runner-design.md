@@ -27,9 +27,13 @@ variables, workflows, and TrueNAS app configuration for current settings.
   test's correctness assertions while investigating.
 - **Use both pools.** Discovery assigns a bounded share of eligible jobs to the
   existing availability check and leaves the remainder hosted. The operational
-  `UGNAS_CI_MAX_JOBS` setting controls that share and the number of idle workers
-  required by the check. Do not queue an entire hosted matrix behind a small
-  NAS pool. This is a capacity setting, not a list of test filenames.
+  `UGNAS_CI_MAX_JOBS` setting controls that share. In ArchiveBox,
+  `UGNAS_CI_MIN_IDLE` separately controls the idle workers required by the check:
+  queued jobs are not runner slots. Coupling these values limited ugNAS to one
+  wave, leaving it idle while hosted tests waited. Queue multiple waves without
+  requiring every worker to be idle, and measure contention before expanding
+  further. Do not queue an entire hosted matrix behind a small NAS pool. These
+  are capacity settings, not lists of test filenames.
 - **Trusted branch jobs only.** These workers share a private network and persist
   between jobs. Public PR code must remain hosted. Staging acceptance credentials
   belong in a branch-restricted GitHub environment, not runner mounts; its SSH
