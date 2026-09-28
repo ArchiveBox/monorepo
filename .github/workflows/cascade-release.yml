@@ -301,7 +301,10 @@ jobs:
               # can be distinguished from a stale edge response in real CI.
               headers = {
                   name: response.headers.get(name)
-                  for name in ("Date", "Age", "Cache-Control", "ETag", "X-Cache", "X-Cache-Hits", "X-PyPI-Last-Serial")
+                  for name in (
+                      "Date", "Age", "Cache-Control", "ETag", "Vary", "Content-Encoding",
+                      "X-Cache", "X-Cache-Hits", "X-Served-By", "X-PyPI-Last-Serial",
+                  )
               }
               print(f"PyPI {url}: HTTP {response.status}, {time.monotonic() - started:.3f}s, {json.dumps(headers)}", flush=True)
 
