@@ -331,9 +331,11 @@ jobs:
           done
           # An isolated install once succeeded while this project's lock still
           # could not see the release, so only the actual downstream resolver is
-          # a valid readiness probe. The separate Simple API check has also waited
-          # 12 minutes without trying this resolver: measure it first to distinguish
-          # resolver delay from API-cache delay. Both checks still gate the push.
+          # a valid readiness probe. Separate metadata probes can disagree with
+          # it: plugin 1.13.107 resolved with matching artifacts while PyPI's JSON
+          # API still returned cached 404s for another 71 seconds. Gate this push
+          # on the actual resolution and artifact assertions below, not a second
+          # independently cached view of the same release.
           # Only an absent exact new version is retryable; other errors fail at once.
           PUBLIC_CHECK_LOG="$RUNNER_TEMP/public-index-check.log"
           for attempt in {0..72}; do
@@ -429,7 +431,7 @@ jobs:
           "$GIT_BINARY" diff --check
 
       - name: Verify exact public upstream release
-        if: steps.state.outputs.needed == 'true' || steps.edge.outputs.dispatch_repositories != ''
+        if: steps.edge.outputs.dispatch_repositories != ''
         env:
           UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
           UPSTREAM_VERSION: ${{ inputs.upstream_version }}
@@ -437,9 +439,9 @@ jobs:
         working-directory: ${{ steps.edge.outputs.downstream_repository != '' && 'downstream' || 'coordinator' }}
         run: |
           set -Eeuo pipefail
-          # Measure the actual resolver before the broader API-visibility gate.
-          # Keep this exact JSON+Simple artifact check before push/dispatch so no
-          # downstream publication occurs until both guarantees have passed.
+          # Dispatch-only edges have no downstream lock to verify. Retain their
+          # public JSON+Simple artifact check; dependency-update edges already
+          # verified the actual public resolution against the tested artifacts.
           uv run --no-cache --no-project python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" "$WHEEL_DIR/release.json" <<'PY'
           import json
           import re
@@ -473,8 +475,9 @@ jobs:
               }
               print(f"PyPI {url}: HTTP {response.status}, {time.monotonic() - started:.3f}s, {json.dumps(headers)}", flush=True)
 
-          # PyPI's Simple API advertises a 600-second cache lifetime. Allow a
-          # full stale cache cycle after upload, with a small publication margin.
+          # Keep the existing bounded publication wait. PyPI advertises a
+          # 600-second Simple API lifetime, but stale responses have outlasted it;
+          # a timeout must fail this gate rather than dispatch unverified builds.
           for attempt in range(73):
               missing = []
               for url, files_key, hashes_key in endpoints:
