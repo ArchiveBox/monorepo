@@ -27,8 +27,8 @@ variables, workflows, and TrueNAS app configuration for current settings.
   test's correctness assertions while investigating.
 - **Use both pools.** Discovery assigns a bounded share of eligible jobs to the
   existing availability check and leaves the remainder hosted. The operational
-  `UGNAS_CI_MAX_JOBS` setting controls that share. In ArchiveBox,
-  `UGNAS_CI_MIN_IDLE` separately controls the idle workers required by the check:
+  `UGNAS_CI_MAX_JOBS` setting controls that share. `UGNAS_CI_MIN_IDLE` separately
+  controls the idle workers required by the check:
   queued jobs are not runner slots. Coupling these values limited ugNAS to one
   wave, leaving it idle while hosted tests waited. Queue multiple waves without
   requiring every worker to be idle, and measure contention before expanding
