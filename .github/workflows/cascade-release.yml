@@ -212,8 +212,8 @@ jobs:
             echo "JQ_BINARY=$ABXPKG_LIB_DIR/env/bin/jq"
           } >> "$GITHUB_ENV"
 
-      - name: Verify exact public upstream release
-        id: public-release
+      - name: Prepare exact tested release manifest
+        id: release-manifest
         if: steps.state.outputs.needed == 'true' || steps.edge.outputs.dispatch_repositories != ''
         env:
           UPSTREAM_REPOSITORY: ${{ steps.edge.outputs.repository }}
@@ -275,6 +275,171 @@ jobs:
           test "${#PUBLIC_ARTIFACT[@]}" -eq 1
           WHEEL_DIR="${PUBLIC_ARTIFACT[0]}"
           echo "wheel_dir=$WHEEL_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Update the immediate dependency
+        if: steps.state.outputs.needed == 'true'
+        env:
+          UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
+          UPSTREAM_VERSION: ${{ inputs.upstream_version }}
+          UPDATE_MODE: ${{ steps.edge.outputs.update_mode }}
+          WHEEL_DIR: ${{ steps.release-manifest.outputs.wheel_dir }}
+          UV_NO_CACHE: "1"
+        working-directory: downstream
+        run: |
+          set -Eeuo pipefail
+          REQUIRED_INTERNAL=()
+          while read -r requirement; do
+            REQUIRED_INTERNAL+=("$requirement")
+          done < <(uv run --no-cache --no-project python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          package_name = os.environ["UPSTREAM_PACKAGE"]
+          released_version = os.environ["UPSTREAM_VERSION"]
+          graph = tomllib.loads(Path("../coordinator/.github/release-graph.toml").read_text())["packages"]
+          package_order = list(graph)
+          released_index = package_order.index(package_name)
+          released_packages = {
+              package["name"]: package
+              for package in tomllib.loads(Path("../upstream/uv.lock").read_text())["package"]
+          }
+          for name in package_order[:released_index]:
+              if name not in released_packages:
+                  raise SystemExit(f"Release tag lock is missing internal package: {name}")
+              package = released_packages[name]
+              if "registry" not in package.get("source", {}):
+                  raise SystemExit(f"{name} is not locked from a package registry")
+              print(f"{name}=={package['version']}")
+          print(f"{package_name}=={released_version}")
+          PY
+          )
+          (( ${#REQUIRED_INTERNAL[@]} ))
+          if [[ "$UPDATE_MODE" == "exact" ]]; then
+            uv add --no-cache --frozen \
+              "${REQUIRED_INTERNAL[@]}"
+          elif [[ "$UPDATE_MODE" != "lock" ]]; then
+            echo "Unsupported dependency update mode: $UPDATE_MODE" >&2
+            exit 1
+          fi
+
+          LOCK_ARGS=(uv lock --no-cache --no-sources)
+          for requirement in "${REQUIRED_INTERNAL[@]}"; do
+            LOCK_ARGS+=(
+              --upgrade-package "$requirement"
+            )
+          done
+          # An isolated install once succeeded while this project's lock still
+          # could not see the release, so only the actual downstream resolver is
+          # a valid readiness probe. The separate Simple API check has also waited
+          # 12 minutes without trying this resolver: measure it first to distinguish
+          # resolver delay from API-cache delay. Both checks still gate the push.
+          # Only an absent exact new version is retryable; other errors fail at once.
+          PUBLIC_CHECK_LOG="$RUNNER_TEMP/public-index-check.log"
+          for attempt in {0..72}; do
+            if UV_NO_COLOR=1 "${LOCK_ARGS[@]}" >"$PUBLIC_CHECK_LOG" 2>&1; then
+              cat "$PUBLIC_CHECK_LOG"
+              break
+            fi
+            if ! grep -Fq "there is no version of ${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}" "$PUBLIC_CHECK_LOG"; then
+              cat "$PUBLIC_CHECK_LOG" >&2
+              exit 1
+            fi
+            if (( attempt == 72 )); then
+              cat "$PUBLIC_CHECK_LOG" >&2
+              echo "Timed out waiting for downstream resolution of public ${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}" >&2
+              exit 1
+            fi
+            echo "Waiting for downstream resolution of public ${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}"
+            sleep 10
+          done
+          # This check used to rewrite lock metadata because resolution came
+          # from local --find-links, not PyPI. uv now resolves this project
+          # directly from the public registry; assert its unmodified resolution
+          # against the tested artifacts instead, preserving uv's upload-time.
+          uv run --no-cache --no-project python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" <<'PY'
+          import json
+          import os
+          import sys
+          import tomllib
+          from pathlib import Path
+
+          package_name, package_version = sys.argv[1:]
+          release = json.loads((Path(os.environ["WHEEL_DIR"]) / "release.json").read_text())
+          wheels = [artifact for artifact in release["urls"] if artifact["packagetype"] == "bdist_wheel"]
+          sdists = [artifact for artifact in release["urls"] if artifact["packagetype"] == "sdist"]
+          if len(wheels) != 1 or len(sdists) != 1:
+              raise SystemExit(
+                  f"Expected one wheel and one sdist for {package_name}=={package_version}, "
+                  f"found {len(wheels)} wheels and {len(sdists)} sdists"
+              )
+
+          locked = tomllib.loads(Path("uv.lock").read_text())["package"]
+          matches = [
+              package for package in locked
+              if package["name"] == package_name and package["version"] == package_version
+          ]
+          if len(matches) != 1:
+              raise SystemExit(
+                  f"Expected one lock entry for {package_name}=={package_version}, found {len(matches)}"
+              )
+          package = matches[0]
+          source = package.get("source", {})
+          if source != {"registry": "https://pypi.org/simple"}:
+              raise SystemExit(
+                  f"{package_name}=={package_version} has unexpected lock source: {source}"
+              )
+          actual_wheels = package.get("wheels", [])
+          actual_sdist = package.get("sdist")
+          if len(actual_wheels) != 1 or actual_sdist is None:
+              raise SystemExit(
+                  f"Expected one resolved wheel and sdist for {package_name}=={package_version}, "
+                  f"found {len(actual_wheels)} wheels and {int(actual_sdist is not None)} sdists"
+              )
+          for role, expected, actual in (
+              ("wheel", wheels[0], actual_wheels[0]),
+              ("sdist", sdists[0], actual_sdist),
+          ):
+              for field, expected_value in (
+                  ("url", expected["url"]),
+                  ("hash", f"sha256:{expected['digests']['sha256']}"),
+                  ("size", expected["size"]),
+              ):
+                  if actual.get(field) != expected_value:
+                      raise SystemExit(
+                          f"{package_name}=={package_version} lock {role} {field} "
+                          f"{actual.get(field)!r} differs from tested artifact {expected_value!r}"
+                      )
+
+          PY
+          uv lock --check --no-cache --no-sources
+          uv run --no-cache --no-project python - "${REQUIRED_INTERNAL[@]}" <<'PY'
+          import sys
+          import tomllib
+
+          locked = {
+              package["name"]: package["version"]
+              for package in tomllib.load(open("uv.lock", "rb"))["package"]
+          }
+          for requirement in sys.argv[1:]:
+              name, version = requirement.split("==", 1)
+              if locked.get(name) != version:
+                  raise SystemExit(f"{name} lock is {locked.get(name)}, not required {version}")
+          PY
+          "$GIT_BINARY" diff --check
+
+      - name: Verify exact public upstream release
+        if: steps.state.outputs.needed == 'true' || steps.edge.outputs.dispatch_repositories != ''
+        env:
+          UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
+          UPSTREAM_VERSION: ${{ inputs.upstream_version }}
+          WHEEL_DIR: ${{ steps.release-manifest.outputs.wheel_dir }}
+        working-directory: ${{ steps.edge.outputs.downstream_repository != '' && 'downstream' || 'coordinator' }}
+        run: |
+          set -Eeuo pipefail
+          # Measure the actual resolver before the broader API-visibility gate.
+          # Keep this exact JSON+Simple artifact check before push/dispatch so no
+          # downstream publication occurs until both guarantees have passed.
           uv run --no-cache --no-project python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" "$WHEEL_DIR/release.json" <<'PY'
           import json
           import re
@@ -343,158 +508,6 @@ jobs:
               print(f"Waiting for public PyPI visibility: {', '.join(missing)}", flush=True)
               time.sleep(10)
           PY
-
-      - name: Update the immediate dependency
-        if: steps.state.outputs.needed == 'true'
-        env:
-          UPSTREAM_PACKAGE: ${{ inputs.upstream_package }}
-          UPSTREAM_VERSION: ${{ inputs.upstream_version }}
-          UPDATE_MODE: ${{ steps.edge.outputs.update_mode }}
-          WHEEL_DIR: ${{ steps.public-release.outputs.wheel_dir }}
-          UV_NO_CACHE: "1"
-        working-directory: downstream
-        run: |
-          set -Eeuo pipefail
-          REQUIRED_INTERNAL=()
-          while read -r requirement; do
-            REQUIRED_INTERNAL+=("$requirement")
-          done < <(uv run --no-cache --no-project python - <<'PY'
-          import os
-          import tomllib
-          from pathlib import Path
-
-          package_name = os.environ["UPSTREAM_PACKAGE"]
-          released_version = os.environ["UPSTREAM_VERSION"]
-          graph = tomllib.loads(Path("../coordinator/.github/release-graph.toml").read_text())["packages"]
-          package_order = list(graph)
-          released_index = package_order.index(package_name)
-          released_packages = {
-              package["name"]: package
-              for package in tomllib.loads(Path("../upstream/uv.lock").read_text())["package"]
-          }
-          for name in package_order[:released_index]:
-              if name not in released_packages:
-                  raise SystemExit(f"Release tag lock is missing internal package: {name}")
-              package = released_packages[name]
-              if "registry" not in package.get("source", {}):
-                  raise SystemExit(f"{name} is not locked from a package registry")
-              print(f"{name}=={package['version']}")
-          print(f"{package_name}=={released_version}")
-          PY
-          )
-          (( ${#REQUIRED_INTERNAL[@]} ))
-          if [[ "$UPDATE_MODE" == "exact" ]]; then
-            uv add --no-cache --frozen \
-              "${REQUIRED_INTERNAL[@]}"
-          elif [[ "$UPDATE_MODE" != "lock" ]]; then
-            echo "Unsupported dependency update mode: $UPDATE_MODE" >&2
-            exit 1
-          fi
-
-          LOCK_ARGS=(uv lock --no-cache --no-sources)
-          for requirement in "${REQUIRED_INTERNAL[@]}"; do
-            LOCK_ARGS+=(
-              --upgrade-package "$requirement"
-            )
-          done
-          # Resolve the actual downstream project as the publication probe.
-          # An isolated install succeeded while this lock still saw "no version"
-          # immediately afterwards: its different index request can hit another
-          # stale PyPI response. Keep the existing bounded propagation window,
-          # and fail immediately for every error other than this exact newly
-          # published package being absent. Never commit pins from a probe alone.
-          PUBLIC_CHECK_LOG="$RUNNER_TEMP/public-index-check.log"
-          for attempt in {0..72}; do
-            if UV_NO_COLOR=1 "${LOCK_ARGS[@]}" >"$PUBLIC_CHECK_LOG" 2>&1; then
-              cat "$PUBLIC_CHECK_LOG"
-              break
-            fi
-            if ! grep -Fq "there is no version of ${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}" "$PUBLIC_CHECK_LOG"; then
-              cat "$PUBLIC_CHECK_LOG" >&2
-              exit 1
-            fi
-            if (( attempt == 72 )); then
-              cat "$PUBLIC_CHECK_LOG" >&2
-              echo "Timed out waiting for downstream resolution of public ${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}" >&2
-              exit 1
-            fi
-            echo "Waiting for downstream resolution of public ${UPSTREAM_PACKAGE}==${UPSTREAM_VERSION}"
-            sleep 10
-          done
-          uv run --no-cache --no-project python - "$UPSTREAM_PACKAGE" "$UPSTREAM_VERSION" <<'PY'
-          import json
-          import os
-          import re
-          import sys
-          import tomllib
-          from pathlib import Path
-
-          package_name, package_version = sys.argv[1:]
-          release = json.loads((Path(os.environ["WHEEL_DIR"]) / "release.json").read_text())
-          wheels = [artifact for artifact in release["urls"] if artifact["packagetype"] == "bdist_wheel"]
-          sdists = [artifact for artifact in release["urls"] if artifact["packagetype"] == "sdist"]
-          if len(wheels) != 1 or len(sdists) != 1:
-              raise SystemExit(
-                  f"Expected one wheel and one sdist for {package_name}=={package_version}, "
-                  f"found {len(wheels)} wheels and {len(sdists)} sdists"
-              )
-
-          def artifact_line(artifact):
-              return (
-                  f'{{ url = "{artifact["url"]}", hash = "sha256:{artifact["digests"]["sha256"]}", '
-                  f'size = {artifact["size"]} }}'
-              )
-
-          path = Path("uv.lock")
-          text = path.read_text()
-          package_pattern = re.compile(
-              rf'(?ms)^\[\[package\]\]\n'
-              rf'name = "{re.escape(package_name)}"\n'
-              rf'version = "{re.escape(package_version)}"\n'
-              rf'.*?(?=^\[\[package\]\]|\Z)'
-          )
-          matches = list(package_pattern.finditer(text))
-          if len(matches) != 1:
-              raise SystemExit(
-                  f"Expected one lock entry for {package_name}=={package_version}, found {len(matches)}"
-              )
-          match = matches[0]
-          package_block = match.group(0)
-          package_block, source_count = re.subn(
-              r'^source = \{.*\}$',
-              'source = { registry = "https://pypi.org/simple" }',
-              package_block,
-              count=1,
-              flags=re.MULTILINE,
-          )
-          if source_count != 1:
-              raise SystemExit(f"Missing source for {package_name}=={package_version}")
-          package_block = re.sub(r'^sdist = \{.*\}\n', '', package_block, flags=re.MULTILINE)
-          package_block = re.sub(r'^wheels = \[\n(?:    .*\n)*\]\n', '', package_block, flags=re.MULTILINE)
-          package_block = package_block.rstrip() + (
-              f'\nsdist = {artifact_line(sdists[0])}\n'
-              'wheels = [\n'
-              f'    {artifact_line(wheels[0])},\n'
-              ']\n\n'
-          )
-          path.write_text(text[:match.start()] + package_block + text[match.end():])
-
-          PY
-          uv lock --check --no-cache --no-sources
-          uv run --no-cache --no-project python - "${REQUIRED_INTERNAL[@]}" <<'PY'
-          import sys
-          import tomllib
-
-          locked = {
-              package["name"]: package["version"]
-              for package in tomllib.load(open("uv.lock", "rb"))["package"]
-          }
-          for requirement in sys.argv[1:]:
-              name, version = requirement.split("==", 1)
-              if locked.get(name) != version:
-                  raise SystemExit(f"{name} lock is {locked.get(name)}, not required {version}")
-          PY
-          "$GIT_BINARY" diff --check
 
       - name: Push one normal dependent commit
         if: steps.state.outputs.needed == 'true'
