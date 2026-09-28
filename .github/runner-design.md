@@ -34,6 +34,10 @@ variables, workflows, and TrueNAS app configuration for current settings.
   requiring every worker to be idle, and measure contention before expanding
   further. Do not queue an entire hosted matrix behind a small NAS pool. These
   are capacity settings, not lists of test filenames.
+  For the duration-based matrix, offload shorter jobs and keep long jobs early
+  in the hosted queue. Assigning the longest browser jobs to CPU-capped NAS
+  workers left a tail after hosted work finished. Reuse the existing measured
+  estimates; unknown files still receive the normal discovery defaults.
 - **Reserve NAS capacity for its other services.** The CI pool must leave about
   20% CPU headroom for Plex and TrueNAS spikes. Persist resource limits through
   TrueNAS app configuration; a live `docker update` alone is lost on redeploy.
