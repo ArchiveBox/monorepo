@@ -1,0 +1,31 @@
+name: Select online CI runner pool
+description: Queue eligible work on ugNAS even when every worker is busy
+inputs:
+  github-token:
+    description: Token with permission to read the organization's runners
+    required: true
+outputs:
+  use-runner:
+    description: Runner labels for eligible Linux jobs
+    value: ${{ steps.select.outputs.use-runner }}
+runs:
+  using: composite
+  steps:
+    - id: select
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        labels='["ubuntu-24.04"]'
+        # Busy workers can accept queued jobs. Only offline workers are unusable.
+        if online=$(gh api --paginate --slurp 'orgs/ArchiveBox/actions/runners?per_page=100' \
+          --jq '[.[].runners[] | select(.status == "online") | select(([.labels[].name] | index("self-hosted")) != null) | select(([.labels[].name] | index("ugnas-linux")) != null)] | length'); then
+          if (( online > 0 )); then
+            labels='["self-hosted","ugnas-linux"]'
+          fi
+          echo "Online ugNAS workers: $online (busy workers remain eligible)"
+        else
+          echo '::warning::Runner availability API failed; using GitHub-hosted Linux'
+        fi
+        echo "use-runner=$labels" >> "$GITHUB_OUTPUT"
+        echo "Selected runner labels: $labels"

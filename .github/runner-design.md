@@ -15,8 +15,10 @@ variables, workflows, and TrueNAS app configuration for current settings.
   failures. Test proposed changes through the real runner lifecycle.
 - **Availability is checked on GitHub-hosted compute.** Putting discovery on ugNAS
   would strand the workflow when the NAS is down. The existing fallback selects
-  hosted compute when NAS capacity is unavailable or its status API fails. This
-  is a scheduling-time decision, not failover after a job starts; a race after
+  hosted compute when no matching NAS worker is online or its status API fails.
+  Busy online workers remain eligible: work queues behind them instead of being
+  permanently diverted to hosted runners. This is a scheduling-time decision,
+  not failover after a job starts; a race after
   selection remains. Hosted discovery itself can queue. Do not claim NAS solves
   that wait or add a second scheduler merely to avoid it.
 - **Ordinary Linux tests are eligible by default.** Genuine hosted-only
@@ -27,12 +29,11 @@ variables, workflows, and TrueNAS app configuration for current settings.
   test's correctness assertions while investigating.
 - **Use both pools.** Discovery assigns a bounded share of eligible jobs to the
   existing availability check and leaves the remainder hosted. The operational
-  `UGNAS_CI_MAX_JOBS` setting controls that share. `UGNAS_CI_MIN_IDLE` separately
-  controls the idle workers required by the check:
-  queued jobs are not runner slots. Coupling these values limited ugNAS to one
-  wave, leaving it idle while hosted tests waited. Queue multiple waves without
-  requiring every worker to be idle, and measure contention before expanding
-  further. Do not queue an entire hosted matrix behind a small NAS pool. These
+  `UGNAS_CI_MAX_JOBS` setting controls that share. Queued jobs are not runner
+  slots. Requiring idle workers at discovery permanently diverted work to hosted
+  compute even when NAS workers became idle later. Select by online status and
+  queue multiple waves; measure contention before expanding further. Do not queue
+  an entire hosted matrix behind a small NAS pool. These
   are capacity settings, not lists of test filenames.
   For the duration-based matrix, offload shorter jobs and keep long jobs early
   in the hosted queue. Assigning the longest browser jobs to CPU-capped NAS
