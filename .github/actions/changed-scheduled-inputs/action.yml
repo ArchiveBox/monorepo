@@ -1,0 +1,26 @@
+name: Check scheduled inputs
+description: Compare source and optional backend revisions with the last successful scheduled workflow
+inputs:
+  backend:
+    description: ArchiveBox source ref, latest-release, or release:VERSION for a published Docker backend
+    required: false
+    default: ''
+outputs:
+  changed:
+    description: Whether work is needed
+    value: ${{ steps.check.outputs.changed }}
+  key:
+    description: Exact inputs recorded by the workflow's Scheduled inputs job
+    value: ${{ steps.check.outputs.key }}
+  backend:
+    description: Immutable backend revision or published version
+    value: ${{ steps.check.outputs.backend }}
+runs:
+  using: composite
+  steps:
+    - id: check
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        SCHEDULED_BACKEND: ${{ inputs.backend }}
+      run: node "${{ github.action_path }}/check.cjs"
