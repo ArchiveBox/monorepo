@@ -12,8 +12,9 @@ must use the returned backend value so a moving ref cannot change mid-run.
 
 A final job named `Scheduled inputs: KEY` records successful completion. The action
 finds the latest successful scheduled or manual run of the same workflow and
-branch with this checkpoint. A skipped checkpoint on an unchanged run retains the
-same baseline. Ordinary app build runs have no valid checkpoint key. Failed or
+branch with this checkpoint. Unchanged runs skip the checkpoint; the next check
+looks past them to the last successful capture. Ordinary app build runs have no
+valid checkpoint key. Failed or
 cancelled workflows never advance the baseline and are tried again at the next
 slot. With no prior checkpoint, the first run executes all scheduled work.
 
