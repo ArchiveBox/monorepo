@@ -18,8 +18,8 @@ runs:
       run: |
         labels='["ubuntu-24.04"]'
         # Busy workers can accept queued jobs. Only offline workers are unusable.
-        if online=$(gh api --paginate --slurp 'orgs/ArchiveBox/actions/runners?per_page=100' \
-          --jq '[.[].runners[] | select(.status == "online") | select(([.labels[].name] | index("self-hosted")) != null) | select(([.labels[].name] | index("ugnas-linux")) != null)] | length'); then
+        if online=$(gh api --paginate --slurp 'orgs/ArchiveBox/actions/runners?per_page=100' | \
+          jq '[.[].runners[] | select(.status == "online") | select(([.labels[].name] | index("self-hosted")) != null) | select(([.labels[].name] | index("ugnas-linux")) != null)] | length'); then
           if (( online > 0 )); then
             labels='["self-hosted","ugnas-linux"]'
           fi
