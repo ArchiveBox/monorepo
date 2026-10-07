@@ -594,6 +594,7 @@ jobs:
           UPSTREAM_REPOSITORY: ${{ steps.edge.outputs.repository }}
           UPSTREAM_TAG_PREFIX: ${{ steps.edge.outputs.tag_prefix }}
           UPSTREAM_VERSION: ${{ inputs.upstream_version }}
+          WHEEL_DIR: ${{ steps.release-manifest.outputs.wheel_dir }}
         run: |
           set -Eeuo pipefail
           RELEASE_TAG="${UPSTREAM_TAG_PREFIX}${UPSTREAM_VERSION}"
@@ -615,11 +616,20 @@ jobs:
           for index in "${!repositories[@]}"; do
             repository="${repositories[$index]}"
             workflow="${workflows[$index]}"
+            inputs=(-f "inputs[archivebox_version]=$UPSTREAM_VERSION")
+            if [[ "$repository" == "ArchiveBox/homebrew-archivebox" ]]; then
+              # Reuse the verified artifact identity. A second regional PyPI
+              # metadata lookup can still return a stale 404 after this gate.
+              inputs+=(
+                -f "inputs[archivebox_wheel_url]=$("$JQ_BINARY" -er '.urls[] | select(.packagetype == "bdist_wheel") | .url' "$WHEEL_DIR/release.json")"
+                -f "inputs[archivebox_wheel_sha256]=$("$JQ_BINARY" -er '.urls[] | select(.packagetype == "bdist_wheel") | .digests.sha256' "$WHEEL_DIR/release.json")"
+              )
+            fi
             response="$("$GH_BINARY" api "repos/${repository}/actions/workflows/${workflow}/dispatches" \
               --method POST \
               -H "X-GitHub-Api-Version: 2026-03-10" \
               -f ref=main \
-              -f "inputs[archivebox_version]=$UPSTREAM_VERSION")"
+              "${inputs[@]}")"
             run_id="$(printf '%s' "$response" | "$JQ_BINARY" -er '.workflow_run_id')"
             echo "Dispatched ${repository} run ${run_id} for ${UPSTREAM_REPOSITORY}@${RELEASE_TAG}"
           done
