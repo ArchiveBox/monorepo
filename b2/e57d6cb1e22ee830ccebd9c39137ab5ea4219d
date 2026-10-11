@@ -1,0 +1,21 @@
+.github/actions/changed-scheduled-inputs/README.md
+  s_881de1895d9fc6::t_b033da0265fba2 15-17
+.github/actions/changed-scheduled-inputs/check.cjs
+  s_881de1895d9fc6::t_0f24983dbfce87 36-37,39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b2e57d6cb1e22ee830ccebd9c39137ab5ea4219d",
+  "prompts": {},
+  "sessions": {
+    "s_881de1895d9fc6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1038a-da3c-7ea2-b855-507710a752a5",
+        "model": "unknown"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
