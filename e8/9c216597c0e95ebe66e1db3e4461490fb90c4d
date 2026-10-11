@@ -1,0 +1,32 @@
+ARCHIVEBOX_INTEGRATIONS_PLAN.md
+  h_923c208e183a7b 1-139
+archivebox-macos/.gitignore
+  h_923c208e183a7b 1-8
+archivebox-macos/Package.resolved
+  h_923c208e183a7b 1-24
+archivebox-macos/Package.swift
+  h_923c208e183a7b 1-9
+archivebox-macos/README.md
+  h_923c208e183a7b 1-108
+archivebox-macos/Sources/ArchiveBox.swift
+  h_923c208e183a7b 1-141
+archivebox-macos/Sources/Runtime.swift
+  h_923c208e183a7b 1-136
+archivebox-macos/Sources/Settings.swift
+  h_923c208e183a7b 1-238
+archivebox-macos/build.sh
+  h_923c208e183a7b 1-28
+archivebox-macos/prepare.sh
+  h_923c208e183a7b 1-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e89c216597c0e95ebe66e1db3e4461490fb90c4d",
+  "prompts": {},
+  "humans": {
+    "h_923c208e183a7b": {
+      "author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
