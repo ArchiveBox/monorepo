@@ -1,0 +1,19 @@
+.github/runner-design.md
+  s_9c9c09743a0f08::t_7ab26824327825 37-40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "99eb7ce955d30f4e0f00024f6d241c3f7fe9883a",
+  "prompts": {},
+  "sessions": {
+    "s_9c9c09743a0f08": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a10599-e6bc-7da1-918e-fe8a2b9fa5ee",
+        "model": "unknown"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
