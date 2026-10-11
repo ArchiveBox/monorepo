@@ -1,0 +1,14 @@
+.github/workflows/cascade-release.yml
+  h_923c208e183a7b 297-307,314,317,320
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0e85f8d4a1457d4af2599fa3300e5d476ffb32c2",
+  "prompts": {},
+  "humans": {
+    "h_923c208e183a7b": {
+      "author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
