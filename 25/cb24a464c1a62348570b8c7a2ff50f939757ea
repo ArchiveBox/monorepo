@@ -1,0 +1,21 @@
+.github/actions/select-ci-runner/action.yml
+  s_556bc1f07ae91f::t_6caa6294f992d0 1-31
+.github/runner-design.md
+  s_556bc1f07ae91f::t_b0916736145631 18-21,32-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "25cb24a464c1a62348570b8c7a2ff50f939757ea",
+  "prompts": {},
+  "sessions": {
+    "s_556bc1f07ae91f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a104c0-2ca4-7ab3-b864-df5e0c10a410",
+        "model": "unknown"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
