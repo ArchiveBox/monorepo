@@ -1,0 +1,19 @@
+.github/actions/select-ci-runner/action.yml
+  s_556bc1f07ae91f::t_5b295081cbcea4 21-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "01ac53a87210706b86e4c949411ba6eec6b61f87",
+  "prompts": {},
+  "sessions": {
+    "s_556bc1f07ae91f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a104c0-2ca4-7ab3-b864-df5e0c10a410",
+        "model": "unknown"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
