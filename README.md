@@ -18,6 +18,7 @@ workspace setup, shared guidance, and release coordination.
 | `electron-archivebox` | Electron desktop client and Docker-based local server controls | `electron-archivebox/` (`main`) |
 | `ios-archivebox` | Swift iOS/iPadOS/macOS client, share/Safari extensions, `ServerApp` companion | Existing sibling `../ios-archivebox/` (`main`) |
 | `archivebox-browser-extension` | WXT browser extension, URL collection and persona sync | Existing sibling `../archivebox-browser-extension/` (`main`) |
+| `account-checker` | Account access monitoring and recovery alongside shared browser personas; design phase | `account-checker/` (`main`) |
 | `debian-archivebox` | Debian package wrapper | `debian-archivebox/` (`main`) |
 | `homebrew-archivebox` | Homebrew tap and bottles | `homebrew-archivebox/` (`main`) |
 | `docker-archivebox` | Docker deployment definitions | `docker-archivebox/` (`main`) |

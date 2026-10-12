@@ -39,6 +39,7 @@ Before changing ugNAS CI provisioning or runner routing, read [.github/runner-de
 - `../ios-archivebox`: Apple client, extensions, and `ServerApp` macOS server companion. Branch: `main`.
 - `../archivebox-browser-extension`: WXT extension and persona/browser-state sync. Branch: `main`.
 - `docker-archivebox`: deployment definitions. Branch: `main`.
+- `account-checker`: account access monitoring and recovery alongside shared browser personas; currently architecture and prototype planning. Branch: `main`.
 - `docs`: one documentation/wiki checkout, with `origin` (ArchiveBox/docs) and `wiki` (ArchiveBox/ArchiveBox.wiki) remotes. Local branch: `main`; both remote publication branches: `master`. Fetch/merge both before editing; plain `git push` is configured to publish to both. Verify equal remote SHAs after every push. See README synchronization setup.
 - Root `evals`, `bin`, and `skills`: maintained workspace tooling; `old`: historical notes and experiments.
 

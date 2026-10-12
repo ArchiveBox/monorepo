@@ -1,5 +1,8 @@
 import importlib.util
+import os
+import subprocess
 import sys
+import textwrap
 import tomllib
 from pathlib import Path
 
@@ -105,8 +108,27 @@ def test_downloader_cascade_updates_archivebox_development_branch():
 def test_cascade_updates_package_locks_without_rewriting_floating_install_defaults():
     workflow = (PATH.parents[2] / "workflows" / "cascade-release.yml").read_text()
 
-    assert 'LOCK_ARGS=(uv lock --no-cache --no-sources)' in workflow
-    assert "--find-links" not in workflow
+    assert 'LOCK_ARGS=(uv lock --verbose --no-cache --no-sources)' in workflow
+    assert "--find-links" not in "\n".join(line for line in workflow.splitlines() if not line.lstrip().startswith("#"))
     assert '--upgrade-package "$requirement"' in workflow
     assert "dockerfile_path.write_text" not in workflow
     assert "setup_path.write_text" not in workflow
+
+
+@pytest.mark.parametrize("version", ["0.9.73", "0.9.74rc5"])
+def test_archivebox_cascade_dispatches_clients_only_for_stable_releases(tmp_path, version):
+    root = PATH.parents[3]
+    (tmp_path / "coordinator").symlink_to(root, target_is_directory=True)
+    workflow = (root / ".github/workflows/cascade-release.yml").read_text()
+    resolver = workflow.split("      - name: Resolve dependency edge\n", 1)[1].split("          PY\n", 1)[0]
+    source = textwrap.dedent(resolver.split("<<'PY'\n", 1)[1])
+    output = tmp_path / "output"
+    subprocess.run(
+        [sys.executable, "-c", source], cwd=tmp_path, check=True,
+        env={**os.environ, "UPSTREAM_PACKAGE": "archivebox", "UPSTREAM_VERSION": version,
+             "GITHUB_REPOSITORY": "ArchiveBox/ArchiveBox", "GITHUB_OUTPUT": str(output)},
+    )
+    actual = dict(line.split("=", 1) for line in output.read_text().splitlines())
+    edge = tomllib.loads((root / ".github/release-graph.toml").read_text())["packages"]["archivebox"]
+    for key in ("dispatch_repositories", "dispatch_workflows"):
+        assert actual[key] == ("" if "rc" in version else ",".join(edge[key]))

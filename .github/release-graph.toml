@@ -34,6 +34,7 @@ downstream_branch = ""
 update_mode = ""
 dispatch_repositories = ["ArchiveBox/homebrew-archivebox", "ArchiveBox/debian-archivebox", "ArchiveBox/ios-archivebox", "ArchiveBox/android-archivebox", "ArchiveBox/electron-archivebox"]
 dispatch_workflows = ["update-archivebox-dev.yml", "build.yml", "release.yml", "ci.yml", "ci.yml"]
+dispatch_stable_only = true
 
 [source_pins.archivebox-browser-extension]
 repository = "ArchiveBox/archivebox-browser-extension"

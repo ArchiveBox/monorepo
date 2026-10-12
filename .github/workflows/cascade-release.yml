@@ -85,6 +85,9 @@ jobs:
           if not re.fullmatch(r"\d+\.\d+\.\d+(?:rc\d+)?", version):
               raise SystemExit(f"Unsupported release version: {version}")
           edge = graph[package_name]
+          if edge.get("dispatch_stable_only") and "rc" in version:
+              edge["dispatch_repositories"] = []
+              edge["dispatch_workflows"] = []
           if edge["repository"].lower() != os.environ["GITHUB_REPOSITORY"].lower():
               raise SystemExit(
                   f"{package_name} releases must originate from {edge['repository']}, "
