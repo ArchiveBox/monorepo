@@ -1,0 +1,55 @@
+.github/actions/prepare-release-version/test_prepare_release_version.py
+  s_e37750da3e6d76::t_210a3266f93c83 2-3,5,111-112,116-134
+.github/release-graph.toml
+  s_7f4ae3d0295895::t_4a1571264a8bfb 37
+.github/workflows/cascade-release.yml
+  s_7f4ae3d0295895::t_e19f41164de794 88-90
+.gitignore
+  s_881de1895d9fc6::t_0a228d4ff3f234 43
+AGENTS.md
+  s_881de1895d9fc6::t_32ae2e1eabad96 42
+README.md
+  s_881de1895d9fc6::t_cc489515b6a6f5 21
+ci-dashboard/site/index.html
+  s_a85db8abf342b4::t_47b5a4159f3e46 203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "29cb7b12513cf5e44a6e7f165e152465b41ae86f",
+  "prompts": {},
+  "sessions": {
+    "s_7f4ae3d0295895": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11687-d695-7682-a6f1-81a2b6f06524",
+        "model": "unknown"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    },
+    "s_881de1895d9fc6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1038a-da3c-7ea2-b855-507710a752a5",
+        "model": "unknown"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    },
+    "s_a85db8abf342b4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a11ad7-aa85-7ca2-92b9-0bec1277801b",
+        "model": "unknown"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    },
+    "s_e37750da3e6d76": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12df6-d0b4-7223-aa0c-cb6453586270",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
