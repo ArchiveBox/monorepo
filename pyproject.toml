@@ -37,3 +37,7 @@ archivebox = { path = "archivebox", editable = true }
 [tool.pytest.ini_options]
 testpaths = ["README.md", "AGENTS.md", "skills"]
 addopts = ["--codeblocks"]
+
+[tool.ruff.lint]
+# Keep the pre-0.16 Ruff policy explicit when upgrading the linter.
+select = ["E4", "E7", "E9", "F"]
