@@ -33,19 +33,16 @@ function check(repository, runId, sourceSha, branch, backendRef = '') {
         }
     }
     let previousKey;
-    // Jobs responses include step metadata even though the jq projection below
-    // keeps only name/conclusion. Large pages can fail upstream with HTTP 502.
-    const jobsPerPage = 20;
     for (const previous of candidates.sort((a, b) => b.created_at.localeCompare(a.created_at))) {
         for (let page = 1; ; page++) {
-            const { jobs, total_count: total } = api(`repos/${repository}/actions/runs/${previous.id}/jobs?filter=latest&per_page=${jobsPerPage}&page=${page}`,
+            const { jobs, total_count: total } = api(`repos/${repository}/actions/runs/${previous.id}/jobs?filter=latest&per_page=100&page=${page}`,
                 '{total_count, jobs: [.jobs[] | {name, conclusion}]}');
             // Skipped job names may retain unevaluated expressions. Look past
             // no-change runs to the last executed, successful checkpoint.
             // Failed/cancelled workflows never become the successful baseline.
             const checkpoint = jobs.find(job => /^Scheduled inputs: [a-f0-9]{40}(?:-|$)/.test(job.name) && job.conclusion === 'success');
             if (checkpoint) previousKey = checkpoint.name.slice('Scheduled inputs: '.length);
-            if (previousKey || page * jobsPerPage >= total) break;
+            if (previousKey || page * 100 >= total) break;
         }
         if (previousKey) break;
     }
