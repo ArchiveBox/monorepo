@@ -1,0 +1,25 @@
+name: Shared action tests
+
+on:
+  push:
+    paths:
+      - .github/actions/changed-scheduled-inputs/**
+      - .github/workflows/test-actions.yml
+  pull_request:
+    paths:
+      - .github/actions/changed-scheduled-inputs/**
+      - .github/workflows/test-actions.yml
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  scheduled-inputs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Verify scheduling boundaries against the real GitHub API
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node --test .github/actions/changed-scheduled-inputs/check.test.cjs
