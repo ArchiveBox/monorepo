@@ -51,11 +51,11 @@ variables, workflows, and TrueNAS app configuration for current settings.
   when memory is plentiful. Budget the pool without changing those assertions
   or bypassing application resource checks.
 - **Trusted branch jobs only.** These workers share a private network and persist
-  between jobs. Public PR code must remain hosted. Staging acceptance credentials
-  belong in a branch-restricted GitHub environment, not runner mounts; its SSH
-  key is restricted to the fixed acceptance entrypoint. Never reuse an operator's
-  unrestricted key. Environment restrictions do not make untrusted code safe in
-  a trusted workflow context.
+  between jobs. Public PR code must remain hosted. Provider credentials belong
+  in a branch-restricted GitHub environment, not runner mounts. Environment
+  restrictions do not make untrusted code safe in a trusted workflow context.
+  CI has no SSH access or deployment connection to Cabbage; Watchtower on
+  Cabbage pulls published images.
 - **No host Docker socket by default.** It grants control over the NAS and its
   other services. Existing package/test offloads don't require it. Docker-build
   offload needs separate evidence that its isolation and performance justify the
