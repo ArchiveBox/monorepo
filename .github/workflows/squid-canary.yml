@@ -42,6 +42,24 @@ jobs:
           tailscale-client-id: ${{ vars.SQUID_TAILSCALE_CLIENT_ID }}
           tailscale-audience: ${{ vars.SQUID_TAILSCALE_AUDIENCE }}
 
+      - name: Verify Squid certificates and egress
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Use the health-check host so the cold-cache workload remains separate.
+          timeout 5 openssl s_client -proxy "${HTTPS_PROXY#http://}" \
+            -connect www.example.com:443 -servername www.example.com \
+            -verify_hostname www.example.com -verify_return_error -x509_strict \
+            -CAfile "$SQUID_CA_CERT" -brief </dev/null
+
+          status="$(curl --disable --silent --show-error --noproxy '' \
+            --proxy "$HTTP_PROXY" --max-time 5 --output /dev/null --write-out '%{http_code}' \
+            http://169.254.169.254/)"
+          if [[ "$status" != 403 ]]; then
+            echo "::error title=Squid egress check failed::Expected HTTP 403 for a link-local destination, got $status."
+            exit 1
+          fi
+
       - name: Request live URLs through Squid
         shell: bash
         env:
