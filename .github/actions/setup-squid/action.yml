@@ -69,7 +69,8 @@ runs:
           printf '\nca_certificate = %s\n' "$temp/ca-bundle.crt"
         } >"$temp/wgetrc"
         # Keep runner services and uncached build transports off the NAS connection.
-        direct="localhost,127.0.0.1,::1,[::1],.localhost,github.com,.github.com,githubusercontent.com,.githubusercontent.com,.actions.githubusercontent.com,.blob.core.windows.net,pypi.org,files.pythonhosted.org,registry.npmjs.org,registry.yarnpkg.com,nodejs.org,releases.astral.sh,proxy.golang.org,sum.golang.org"
+        # HTTPX accepts bare IPv6 addresses in NO_PROXY and rejects bracketed literals.
+        direct="localhost,127.0.0.1,::1,.localhost,github.com,.github.com,githubusercontent.com,.githubusercontent.com,.actions.githubusercontent.com,.blob.core.windows.net,pypi.org,files.pythonhosted.org,registry.npmjs.org,registry.yarnpkg.com,nodejs.org,releases.astral.sh,proxy.golang.org,sum.golang.org"
         no_proxy="$direct${NO_PROXY:+,$NO_PROXY}${no_proxy:+,$no_proxy}"
         {
           printf 'HTTP_PROXY=%s\nHTTPS_PROXY=%s\nhttp_proxy=%s\nhttps_proxy=%s\n' \
