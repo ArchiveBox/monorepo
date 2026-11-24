@@ -1,0 +1,91 @@
+name: Squid canary
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_at:
+        description: Unix time to begin requests across both runner pools
+        required: false
+        default: '0'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: squid-canary
+  cancel-in-progress: false
+
+jobs:
+  requests:
+    if: github.repository == 'ArchiveBox/monorepo' && github.ref == 'refs/heads/main'
+    name: Squid canary (${{ matrix.pool }})
+    runs-on: ${{ fromJSON(matrix.labels) }}
+    timeout-minutes: 6
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - pool: GitHub-hosted
+            labels: '["ubuntu-24.04"]'
+          - pool: ugNAS
+            labels: '["self-hosted","ugnas-linux"]'
+    steps:
+      - name: Connect to Tailscale
+        if: runner.environment == 'github-hosted'
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0
+        with:
+          oauth-client-id: ${{ vars.SQUID_TAILSCALE_CLIENT_ID }}
+          audience: ${{ vars.SQUID_TAILSCALE_AUDIENCE }}
+          tags: tag:squid-ci
+
+      - name: Request live URLs through Squid
+        shell: bash
+        env:
+          PROXY: ${{ runner.environment == 'github-hosted' && vars.SQUID_TAILNET_URL || vars.SQUID_LAN_URL }}
+          SQUID_CA: ${{ vars.SQUID_CA }}
+          START_AT: ${{ inputs.start_at }}
+        run: |
+          set -euo pipefail
+          : "${PROXY:?Set the Squid URL for this runner pool}"
+          : "${SQUID_CA:?Set SQUID_CA to the public Squid CA certificate}"
+          temp="$(mktemp -d "$RUNNER_TEMP/squid-canary.XXXXXX")"
+          printf '%s\n' "$SQUID_CA" >"$temp/ca.crt"
+          [[ "$START_AT" =~ ^[0-9]+$ ]]
+          now="$(date +%s)"
+          if (( START_AT > now )); then
+            delay=$(( START_AT - now ))
+            (( delay <= 180 ))
+            sleep "$delay"
+          fi
+
+          # A fresh URL tests a cold cache on every run without flushing other projects' cache entries.
+          page="https://example.com/?archivebox-ci=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          crx="https://clients2.google.com/service/update2/crx?response=redirect&prodversion=1230&acceptformat=crx3&x=id%3Dmpiodijhokgodhhofbcjdecpffjipkle%26uc"
+
+          fetch() {
+            curl --fail --silent --show-error --location --noproxy '' \
+              --connect-timeout 10 --max-time 30 --proxy "$PROXY" --cacert "$temp/ca.crt" \
+              --output "$temp/$1" "$2"
+          }
+          printf 'Requests started at %s UTC\n' "$(date -u +%FT%T)"
+          pids=()
+          for n in 1 2 3 4; do
+            fetch "page-$n" "$page" &
+            pids+=("$!")
+          done
+          for n in 1 2; do
+            fetch "crx-$n" "$crx" &
+            pids+=("$!")
+          done
+          for pid in "${pids[@]}"; do
+            wait "$pid"
+          done
+
+          grep -q 'Example Domain' "$temp/page-1"
+          for n in 2 3 4; do
+            cmp "$temp/page-1" "$temp/page-$n"
+          done
+          [[ "$(od -An -N4 -tx1 "$temp/crx-1" | tr -d '[:space:]')" == 43723234 ]]
+          cmp "$temp/crx-1" "$temp/crx-2"
+          (cd "$temp" && sha256sum page-1 crx-1)
