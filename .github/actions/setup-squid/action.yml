@@ -20,6 +20,17 @@ inputs:
 runs:
   using: composite
   steps:
+    # The upstream action overwrites Ethernet's DNS on macOS with MagicDNS.
+    # A numeric Squid peer does not need MagicDNS; keep the runner's DNS for
+    # GitHub and other direct transports without widening the proxy bypass list.
+    - id: macos-dns
+      name: Save hosted macOS DNS for numeric Squid peer
+      if: runner.os == 'macOS' && runner.environment == 'github-hosted' && inputs.tailscale-client-id != ''
+      shell: bash
+      env:
+        SQUID_PROXY: ${{ inputs.proxy }}
+      run: bash "$GITHUB_ACTION_PATH/macos-dns.sh" save
+
     - name: Connect to Tailscale
       if: runner.environment == 'github-hosted' && inputs.tailscale-client-id != ''
       uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0
@@ -27,6 +38,14 @@ runs:
         oauth-client-id: ${{ inputs.tailscale-client-id }}
         audience: ${{ inputs.tailscale-audience }}
         tags: tag:squid-ci
+        args: ${{ steps.macos-dns.outputs.tailscale-args }}
+
+    - name: Restore hosted macOS DNS before direct or proxied traffic
+      if: always() && steps.macos-dns.outputs.state != ''
+      shell: bash
+      env:
+        DNS_STATE_DIR: ${{ steps.macos-dns.outputs.state }}
+      run: bash "$GITHUB_ACTION_PATH/macos-dns.sh" restore
 
     - name: Check Squid HTTPS access
       shell: bash
