@@ -33,20 +33,14 @@ jobs:
             labels: '["self-hosted","ugnas-linux"]'
             proxy_variable: SQUID_LAN_URL
     steps:
-      - name: Connect to Tailscale
-        if: runner.environment == 'github-hosted'
-        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0
-        with:
-          oauth-client-id: ${{ vars.SQUID_TAILSCALE_CLIENT_ID }}
-          audience: ${{ vars.SQUID_TAILSCALE_AUDIENCE }}
-          tags: tag:squid-ci
-
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Set up Squid
         uses: ./.github/actions/setup-squid
         with:
           proxy: ${{ vars[matrix.proxy_variable] }}
           ca: ${{ vars.SQUID_CA }}
+          tailscale-client-id: ${{ vars.SQUID_TAILSCALE_CLIENT_ID }}
+          tailscale-audience: ${{ vars.SQUID_TAILSCALE_AUDIENCE }}
 
       - name: Request live URLs through Squid
         shell: bash

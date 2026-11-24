@@ -7,9 +7,27 @@ inputs:
   ca:
     description: Public Squid CA certificate in PEM format.
     required: true
+  tailscale-client-id:
+    description: Tailscale federated identity for hosted runners.
+    required: false
+  tailscale-audience:
+    description: Audience assigned to the federated identity.
+    required: false
+  browser:
+    description: Configure Chrome proxy arguments and trust for this job.
+    required: false
+    default: 'false'
 runs:
   using: composite
   steps:
+    - name: Connect to Tailscale
+      if: runner.environment == 'github-hosted' && inputs.tailscale-client-id != ''
+      uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0
+      with:
+        oauth-client-id: ${{ inputs.tailscale-client-id }}
+        audience: ${{ inputs.tailscale-audience }}
+        tags: tag:squid-ci
+
     - name: Check Squid HTTPS access
       shell: bash
       env:
@@ -52,3 +70,35 @@ runs:
             "$temp/ca-bundle.crt" "$temp/ca-bundle.crt" "$temp/ca-bundle.crt"
           printf 'NODE_EXTRA_CA_CERTS=%s\nNODE_USE_ENV_PROXY=1\nSQUID_CA_CERT=%s\n' "$temp/ca.crt" "$temp/ca.crt"
         } >> "$GITHUB_ENV"
+
+    - name: Configure Chrome for Squid
+      if: inputs.browser == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ "$RUNNER_OS" == Linux ]]; then
+          if ! command -v certutil >/dev/null; then
+            if ! apt-cache show libnss3-tools >/dev/null 2>&1; then
+              sudo apt-get update
+            fi
+            sudo apt-get install -y --no-install-recommends libnss3-tools
+          fi
+          # Chrome 146+ also recognizes the legacy path, which older Chrome requires.
+          nss_dir="$HOME/.pki/nssdb"
+          if [[ ! -d "$nss_dir" && -d "$HOME/.local/share/pki/nssdb" ]]; then
+            nss_dir="$HOME/.local/share/pki/nssdb"
+          fi
+          mkdir -p "$nss_dir"
+          if [[ ! -f "$nss_dir/cert9.db" ]]; then
+            certutil -N --empty-password -d "sql:$nss_dir"
+          fi
+          certutil -A -d "sql:$nss_dir" -n 'ugNAS Squid CA' -t 'C,,' -i "$SQUID_CA_CERT"
+        elif [[ "$RUNNER_OS" == macOS ]]; then
+          sudo security add-trusted-cert -d -r trustRoot \
+            -k /Library/Keychains/System.keychain "$SQUID_CA_CERT"
+        else
+          echo "::error title=Squid browser setup failed::Unsupported Chrome trust store on $RUNNER_OS."
+          exit 1
+        fi
+        args="$(jq -c --arg proxy "--proxy-server=$HTTPS_PROXY" '. + [$proxy]' <<<"${CHROME_ARGS_EXTRA:-[]}")"
+        printf 'CHROME_ARGS_EXTRA=%s\n' "$args" >> "$GITHUB_ENV"
