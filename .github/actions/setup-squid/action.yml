@@ -61,6 +61,13 @@ runs:
           system_ca=/etc/ssl/cert.pem
         fi
         { cat "$system_ca"; printf '\n'; cat "$temp/ca.crt"; } >"$temp/ca-bundle.crt"
+        wget_config="${WGETRC:-$HOME/.wgetrc}"
+        {
+          if [[ -f "$wget_config" ]]; then
+            cat "$wget_config"
+          fi
+          printf '\nca_certificate = %s\n' "$temp/ca-bundle.crt"
+        } >"$temp/wgetrc"
         no_proxy="localhost,127.0.0.1,::1,[::1],.localhost${NO_PROXY:+,$NO_PROXY}${no_proxy:+,$no_proxy}"
         {
           printf 'HTTP_PROXY=%s\nHTTPS_PROXY=%s\nhttp_proxy=%s\nhttps_proxy=%s\n' \
@@ -68,7 +75,8 @@ runs:
           printf 'NO_PROXY=%s\nno_proxy=%s\n' "$no_proxy" "$no_proxy"
           printf 'SSL_CERT_FILE=%s\nCURL_CA_BUNDLE=%s\nREQUESTS_CA_BUNDLE=%s\n' \
             "$temp/ca-bundle.crt" "$temp/ca-bundle.crt" "$temp/ca-bundle.crt"
-          printf 'NODE_EXTRA_CA_CERTS=%s\nNODE_USE_ENV_PROXY=1\nSQUID_CA_CERT=%s\n' "$temp/ca.crt" "$temp/ca.crt"
+          printf 'WGETRC=%s\nNODE_EXTRA_CA_CERTS=%s\nNODE_USE_ENV_PROXY=1\nSQUID_CA_CERT=%s\n' \
+            "$temp/wgetrc" "$temp/ca.crt" "$temp/ca.crt"
         } >> "$GITHUB_ENV"
 
     - name: Configure Chrome for Squid
