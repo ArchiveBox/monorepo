@@ -28,8 +28,10 @@ jobs:
         include:
           - pool: GitHub-hosted
             labels: '["ubuntu-24.04"]'
+            proxy_variable: SQUID_TAILNET_URL
           - pool: ugNAS
             labels: '["self-hosted","ugnas-linux"]'
+            proxy_variable: SQUID_LAN_URL
     steps:
       - name: Connect to Tailscale
         if: runner.environment == 'github-hosted'
@@ -39,18 +41,20 @@ jobs:
           audience: ${{ vars.SQUID_TAILSCALE_AUDIENCE }}
           tags: tag:squid-ci
 
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set up Squid
+        uses: ./.github/actions/setup-squid
+        with:
+          proxy: ${{ vars[matrix.proxy_variable] }}
+          ca: ${{ vars.SQUID_CA }}
+
       - name: Request live URLs through Squid
         shell: bash
         env:
-          PROXY: ${{ runner.environment == 'github-hosted' && vars.SQUID_TAILNET_URL || vars.SQUID_LAN_URL }}
-          SQUID_CA: ${{ vars.SQUID_CA }}
           START_AT: ${{ inputs.start_at }}
         run: |
           set -euo pipefail
-          : "${PROXY:?Set the Squid URL for this runner pool}"
-          : "${SQUID_CA:?Set SQUID_CA to the public Squid CA certificate}"
           temp="$(mktemp -d "$RUNNER_TEMP/squid-canary.XXXXXX")"
-          printf '%s\n' "$SQUID_CA" >"$temp/ca.crt"
           [[ "$START_AT" =~ ^[0-9]+$ ]]
           now="$(date +%s)"
           if (( START_AT > now )); then
@@ -65,7 +69,7 @@ jobs:
 
           fetch() {
             curl --fail --silent --show-error --location --noproxy '' \
-              --connect-timeout 10 --max-time 30 --proxy "$PROXY" --cacert "$temp/ca.crt" \
+              --connect-timeout 10 --max-time 30 --proxy "$HTTPS_PROXY" --cacert "$SQUID_CA_CERT" \
               --output "$temp/$1" "$2"
           }
           printf 'Requests started at %s UTC\n' "$(date -u +%FT%T)"

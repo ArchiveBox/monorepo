@@ -1,0 +1,54 @@
+name: Set up Squid
+description: Verify and configure the shared Squid proxy for a CI job.
+inputs:
+  proxy:
+    description: HTTP URL of the Squid proxy.
+    required: true
+  ca:
+    description: Public Squid CA certificate in PEM format.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Check Squid HTTPS access
+      shell: bash
+      env:
+        SQUID_PROXY: ${{ inputs.proxy }}
+        SQUID_CA: ${{ inputs.ca }}
+      run: |
+        set -euo pipefail
+        if [[ -z "$SQUID_PROXY" || -z "$SQUID_CA" ]]; then
+          echo "::error title=Squid configuration missing::Set the runner pool's Squid URL and public CA certificate."
+          exit 1
+        fi
+
+        temp="$(mktemp -d "$RUNNER_TEMP/squid.XXXXXX")"
+        printf '%s\n' "$SQUID_CA" >"$temp/ca.crt"
+        # Use a separate URL so the check leaves the canary workload cold.
+        if ! status="$(curl --disable --fail --silent --show-error --noproxy '' \
+          --connect-timeout 3 --max-time 5 --proxy "$SQUID_PROXY" --cacert "$temp/ca.crt" \
+          --output /dev/null --write-out '%{http_code}' https://www.example.com/)"; then
+          echo "::error title=Squid unavailable::HTTPS through the configured proxy failed."
+          exit 1
+        fi
+        if [[ "$status" != 200 ]]; then
+          echo "::error title=Squid check failed::Expected HTTP 200 through Squid, got $status."
+          exit 1
+        fi
+        echo 'Squid HTTPS check passed.'
+
+        # Retain public trust because HTTPS hosts outside Squid's SSL Bump list use their origin certificates.
+        system_ca="${SSL_CERT_FILE:-/etc/ssl/certs/ca-certificates.crt}"
+        if [[ "$RUNNER_OS" == macOS && -z "${SSL_CERT_FILE:-}" ]]; then
+          system_ca=/etc/ssl/cert.pem
+        fi
+        { cat "$system_ca"; printf '\n'; cat "$temp/ca.crt"; } >"$temp/ca-bundle.crt"
+        no_proxy="localhost,127.0.0.1,::1,[::1],.localhost${NO_PROXY:+,$NO_PROXY}${no_proxy:+,$no_proxy}"
+        {
+          printf 'HTTP_PROXY=%s\nHTTPS_PROXY=%s\nhttp_proxy=%s\nhttps_proxy=%s\n' \
+            "$SQUID_PROXY" "$SQUID_PROXY" "$SQUID_PROXY" "$SQUID_PROXY"
+          printf 'NO_PROXY=%s\nno_proxy=%s\n' "$no_proxy" "$no_proxy"
+          printf 'SSL_CERT_FILE=%s\nCURL_CA_BUNDLE=%s\nREQUESTS_CA_BUNDLE=%s\n' \
+            "$temp/ca-bundle.crt" "$temp/ca-bundle.crt" "$temp/ca-bundle.crt"
+          printf 'NODE_EXTRA_CA_CERTS=%s\nNODE_USE_ENV_PROXY=1\nSQUID_CA_CERT=%s\n' "$temp/ca.crt" "$temp/ca.crt"
+        } >> "$GITHUB_ENV"
