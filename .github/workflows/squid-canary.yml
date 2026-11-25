@@ -107,7 +107,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export CANARY_PATH="$PATH"
           node .github/ci-proxy/run-isolated.mjs bash -ec '
+            test "$PATH" = "$CANARY_PATH"
+            test ! -S /run/docker.sock
             test -z "$(ip -4 route show default)"
             test -z "$(ip -6 route show default)"
             if curl --disable --silent --noproxy "*" --connect-timeout 2 https://1.1.1.1/ -o /dev/null; then

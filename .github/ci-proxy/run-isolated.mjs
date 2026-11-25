@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdtempSync, rmdirSync } from "node:fs";
 import { createConnection, createServer, isIPv4 } from "node:net";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -66,17 +65,24 @@ if (invocation[0] === "--namespace") {
   }
   // Loopback inside a namespace has no route to the runner. Cross it over a
   // Unix socket whose host-side destination is fixed to the replay listener.
-  const directory = mkdtempSync(join(tmpdir(), "ci-network-"));
+  const directory = mkdtempSync("/tmp/ci-network-");
   const bridgePath = join(directory, "proxy.sock");
   const bridge = relay(() => createConnection(Number(proxy.port), proxy.hostname));
   try {
     bridge.server.listen(bridgePath);
     await once(bridge.server, "listening");
     await run("sudo", [
-      "--preserve-env", "--", "unshare", "--net", "--",
+      "--preserve-env", "--", "unshare", "--mount", "--net", "--",
       "bash", "-c",
-      'set -e; ip link set lo up; uid=$1; gid=$2; shift 2; exec setpriv --reuid "$uid" --regid "$gid" --init-groups --no-new-privs -- "$@"',
+      `set -e
+      ip link set lo up
+      # Hide host service sockets that could perform network operations on the test's behalf.
+      mount -t tmpfs -o mode=0755 tmpfs /run
+      uid=$1; gid=$2; path=$3; home=$4; shift 4
+      exec setpriv --reuid "$uid" --regid "$gid" --init-groups --no-new-privs -- \\
+        /usr/bin/env "PATH=$path" "HOME=$home" "$@"`,
       "ci-network", String(process.getuid()), String(process.getgid()),
+      process.env.PATH, process.env.HOME,
       process.execPath, fileURLToPath(import.meta.url), "--namespace", bridgePath, ...invocation,
     ]);
   } finally {
