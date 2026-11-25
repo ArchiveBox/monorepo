@@ -7,7 +7,6 @@ import json
 import logging
 import os
 import re
-import shutil
 import sqlite3
 import time
 import uuid
@@ -16,6 +15,7 @@ from email.utils import parsedate_to_datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
+from urllib.parse import parse_qsl, urlsplit
 
 from mitmproxy import http
 
@@ -33,7 +33,20 @@ HOP_HEADERS = {
     b"connection", b"keep-alive", b"proxy-connection", b"proxy-authorization",
     b"proxy-authenticate", b"te", b"trailer", b"transfer-encoding", b"upgrade",
 }
+REQUEST_CACHE_IGNORED = {b"cache-control", b"pragma", b"content-length"}
 HEALTH_PATH = re.compile(r"/(?:healthz?|healthcheck|livez|liveness|readyz?|readiness)(?:/|\?|$)", re.I)
+SINGLE_RANGE = re.compile(r"bytes=([0-9]{0,19})-([0-9]{0,19})", re.I)
+IDENTITY_HEADERS = {b"cookie", b"authorization"}
+REPRESENTATION_HEADERS = {
+    b"accept", b"accept-encoding", b"accept-language", b"available-dictionary", b"content-type",
+    b"content-encoding", b"range", b"origin", b"if-match", b"if-none-match", b"if-modified-since",
+    b"if-unmodified-since", b"if-range", b"access-control-request-method", b"access-control-request-headers",
+}
+BROWSER_HEADERS = {
+    b"user-agent", b"referer", b"priority", b"sec-fetch-dest", b"sec-fetch-mode", b"sec-fetch-site",
+    b"sec-fetch-user", b"sec-ch-ua", b"sec-ch-ua-mobile", b"sec-ch-ua-platform", b"sec-ch-ua-full-version-list",
+    b"sec-ch-ua-arch", b"sec-ch-ua-bitness", b"sec-ch-ua-platform-version", b"sec-ch-ua-model",
+}
 
 
 def public_target(request: http.Request) -> bool:
@@ -64,11 +77,11 @@ def header_fields(headers, ignored=frozenset()):
     ]
 
 
-def fingerprint(request: http.Request) -> str:
+def fingerprint(request: http.Request, ignored=REQUEST_CACHE_IGNORED) -> str:
     # HTTP framing and client cache directives do not select a representation.
     # Keep all other headers, especially cookies, credentials, and conditionals.
     headers = sorted(
-        header_fields(request.headers, {b"cache-control", b"pragma", b"content-length"}),
+        header_fields(request.headers, ignored),
         key=lambda field: field[0],
     )
     key = hashlib.sha256()
@@ -76,6 +89,40 @@ def fingerprint(request: http.Request) -> str:
         key.update(len(field).to_bytes(8, "big"))
         key.update(field)
     return key.hexdigest()
+
+
+def range_bounds(byte_range, size):
+    start, end = byte_range.groups()
+    if not start:
+        suffix = int(end or "0")
+        return (max(0, size - suffix), size - 1) if size and suffix else None
+    first = int(start)
+    last = min(int(end), size - 1) if end else size - 1
+    return (first, last) if first <= last else None
+
+
+def observe(request: http.Request) -> dict:
+    """Log enough to count duplicate requests without logging URLs or headers."""
+    url = urlsplit(request.url)
+    body = request.raw_content or b""
+    base = hashlib.sha256(request.method.encode() + b"\0" + request.url.encode() + b"\0")
+    path = hashlib.sha256((url.scheme + "://" + url.netloc + url.path).encode()).hexdigest()[:16]
+    request_url = base.hexdigest()[:16]
+    base.update(body)
+    payload = base.hexdigest()[:16]
+    headers = sorted(header_fields(request.headers, REQUEST_CACHE_IGNORED), key=lambda field: field[0])
+    base.update(repr([pair for pair in headers if pair[0] in IDENTITY_HEADERS]).encode())
+    identity = base.hexdigest()[:16]
+    base.update(repr([pair for pair in headers if pair[0] in REPRESENTATION_HEADERS]).encode())
+    representation = base.hexdigest()[:16]
+    base.update(repr([pair for pair in headers if pair[0].startswith(b"if-") or pair[0] not in BROWSER_HEADERS]).encode())
+    return {
+        "path": path, "url": request_url, "payload": payload, "identity": identity,
+        "representation": representation, "without_browser": base.hexdigest()[:16],
+        "cookie_present": any(k == b"cookie" for k, _ in headers),
+        "no_store": any(item.strip().lower() == "no-store" for item in request.headers.get("Cache-Control", "").split(",")),
+        "query": sorted({key for key, _ in parse_qsl(url.query, keep_blank_values=True) if re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]{0,32}", key)})[:12],
+    }
 
 
 def freshness(response: http.Response) -> int:
@@ -97,7 +144,14 @@ def freshness(response: http.Response) -> int:
 def result(flow: http.HTTPFlow, outcome: str) -> None:
     host, method = flow.metadata.get("destination", (flow.request.host, flow.request.method))
     status = flow.response.status_code if flow.response else 0
-    LOG.info("proxy_cache %s", json.dumps({"result": outcome, "host": host, "method": method, "status": status}))
+    summary = {"result": outcome, "host": host, "method": method, "status": status}
+    summary.update(flow.metadata.get("observation", {}))
+    if flow.metadata.get("range_from_full"):
+        summary["range_from_full"] = True
+    if flow.response is not None:
+        summary["vary"] = sorted(field.lower().strip() for field in flow.response.headers.get("Vary", "").split(",") if field.strip())
+        summary["public"] = bool(re.search(r"(?:^|,)\s*public(?:\s*,|\s*$)", flow.response.headers.get("Cache-Control", ""), re.I))
+    LOG.info("proxy_cache %s", json.dumps(summary, separators=(",", ":")))
 
 
 class ReplayCache:
@@ -126,9 +180,15 @@ class ReplayCache:
         self.latest_cleanup = 0
         self.total = self.db.execute("SELECT COALESCE(SUM(size), 0) FROM entries").fetchone()[0]
         valid = {name for (name,) in self.db.execute("SELECT name FROM entries")}
+        cutoff = time.time() - 600
         for path in self.objects.iterdir():
+            # mitmproxy can reload the addon while the previous instance is writing.
             if path.name not in valid:
-                path.unlink()
+                try:
+                    if path.stat().st_mtime < cutoff:
+                        path.unlink(missing_ok=True)
+                except FileNotFoundError:
+                    pass
         self.evict(int(time.time()), 0)
         self.relay = ThreadingHTTPServer(("127.0.0.1", 0), self.make_relay_handler())
         Thread(target=self.relay.serve_forever, daemon=True).start()
@@ -156,7 +216,13 @@ class ReplayCache:
                     self.send_header("Content-Length", str(size))
                     self.end_headers()
                     try:
-                        shutil.copyfileobj(body, self.wfile, length=256 * 1024)
+                        remaining = size
+                        while remaining:
+                            chunk = body.read(min(remaining, 256 * 1024))
+                            if not chunk:
+                                break
+                            self.wfile.write(chunk)
+                            remaining -= len(chunk)
                     except (BrokenPipeError, ConnectionResetError):
                         pass
 
@@ -178,29 +244,54 @@ class ReplayCache:
                 break
             self.discard(*row)
 
-    def lookup(self, flow, key):
+    def lookup(self, flow, key, byte_range=None):
         now = int(time.time())
         row = self.db.execute(
             "SELECT name, size, expires, used, response FROM entries WHERE key=?", (key,),
         ).fetchone()
         if row is None:
             return False
-        name, size, expires, used, metadata = row
+        name, object_size, expires, used, metadata = row
         if expires <= now:
-            self.discard(key, name, size)
+            self.discard(key, name, object_size)
             return False
         status, reason, fields, trailers = json.loads(metadata)
+        offset, size = 0, object_size
+        if byte_range:
+            # ZIP and WACZ readers fetch many small slices. A fresh complete
+            # representation can answer single ranges without another origin request.
+            headers = dict(fields)
+            vary = {item.strip().lower() for name, value in fields if name == "vary" for item in value.split(",")}
+            if (
+                status != 200 or trailers or "content-range" in headers
+                or headers.get("content-encoding", "identity").lower() != "identity"
+                or headers.get("accept-ranges", "").lower() == "none" or vary & {"range", "*"}
+            ):
+                return False
+            bounds = range_bounds(byte_range, size)
+            if bounds is None:
+                return False
+            offset, end = bounds
+            status, reason = 206, "Partial Content"
+            fields = [(name, value) for name, value in fields
+                      if name not in ("content-length", "content-md5", "content-digest")]
+            fields.append(("content-range", f"bytes {offset}-{end}/{object_size}"))
+            size = end - offset + 1
+            fields.append(("content-length", str(size)))
         try:
             body = (self.objects / name).open("rb")
         except FileNotFoundError:
-            self.discard(key, name, size)
+            self.discard(key, name, object_size)
             return False
+        body.seek(offset)
         if now - used >= 60:
             self.db.execute("UPDATE entries SET used=? WHERE key=?", (now, key))
         flow.metadata["hit"] = True
+        if byte_range:
+            flow.metadata["range_from_full"] = True
         if size <= BUFFER_SIZE or trailers:
             with body:
-                content = body.read()
+                content = body.read(size)
             loaded = http.Response.make(status, content)
             loaded.reason = reason
             loaded.headers = http.Headers([(k.encode("latin-1"), v.encode("latin-1")) for k, v in fields])
@@ -251,8 +342,18 @@ class ReplayCache:
             return
         key = fingerprint(flow.request)
         flow.metadata["cache_key"] = key
+        flow.metadata["observation"] = {"key": key[:16], **observe(flow.request)}
+        byte_range = SINGLE_RANGE.fullmatch(flow.request.headers.get("Range", "").strip())
+        complete = (
+            fingerprint(flow.request, REQUEST_CACHE_IGNORED | {b"range"})
+            if byte_range and flow.request.method == "GET"
+            and not any(name.lower().startswith("if-") for name in flow.request.headers)
+            else None
+        )
         try:
             while not self.lookup(flow, key):
+                if complete and self.lookup(flow, complete, byte_range):
+                    return
                 other = self.pending.get(key)
                 if other is None:
                     future = asyncio.get_running_loop().create_future()
