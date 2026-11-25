@@ -1,0 +1,24 @@
+destroy table inet ci_proxy_egress
+table inet ci_proxy_egress {
+    set nonpublic_v4 {
+        type ipv4_addr
+        flags interval
+        elements = { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8,
+                     169.254.0.0/16, 172.16.0.0/12, 192.0.0.0/24, 192.0.2.0/24,
+                     192.88.99.0/24, 192.168.0.0/16, 198.18.0.0/15, 198.51.100.0/24,
+                     203.0.113.0/24, 224.0.0.0/4, 240.0.0.0/4 }
+    }
+    chain input {
+        type filter hook input priority -5; policy accept;
+        iifname "mitmproxy0" ct direction reply ct state established,related accept
+        iifname "mitmproxy0" counter reject with icmpx type admin-prohibited
+    }
+    chain forward {
+        type filter hook forward priority -5; policy accept;
+        # Allow client replies while preventing new LAN or tailnet connections.
+        iifname "mitmproxy0" ct direction reply ct state established,related accept
+        iifname "mitmproxy0" ip daddr @nonpublic_v4 counter reject with icmpx type admin-prohibited
+        iifname "mitmproxy0" ip6 daddr != 2000::/3 counter reject with icmpx type admin-prohibited
+        iifname "mitmproxy0" ip6 daddr { 2001:db8::/32, 2002::/16, 3fff::/20 } counter reject with icmpx type admin-prohibited
+    }
+}

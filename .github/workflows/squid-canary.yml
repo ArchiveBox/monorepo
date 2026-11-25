@@ -1,4 +1,4 @@
-name: Squid canary
+name: Shared proxy canary
 
 on:
   workflow_dispatch:
@@ -7,6 +7,10 @@ on:
         description: Unix time to begin requests across both runner pools
         required: false
         default: '0'
+      proxy_port:
+        description: Optional port for validating a replacement proxy
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -19,7 +23,7 @@ concurrency:
 jobs:
   requests:
     if: github.repository == 'ArchiveBox/monorepo' && github.ref == 'refs/heads/main'
-    name: Squid canary (${{ matrix.pool }})
+    name: Shared proxy canary (${{ matrix.pool }})
     runs-on: ${{ fromJSON(matrix.labels) }}
     timeout-minutes: 6
     strategy:
@@ -34,15 +38,29 @@ jobs:
             proxy_variable: SQUID_LAN_URL
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Set up Squid
+      - name: Select proxy endpoint
+        id: proxy
+        shell: bash
+        env:
+          DEFAULT_PROXY: ${{ vars[matrix.proxy_variable] }}
+          PROXY_PORT: ${{ inputs.proxy_port }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$PROXY_PORT" ]]; then
+            [[ "$PROXY_PORT" =~ ^[0-9]{1,5}$ ]]
+            DEFAULT_PROXY="${DEFAULT_PROXY%:*}:$PROXY_PORT"
+          fi
+          printf 'url=%s\n' "$DEFAULT_PROXY" >> "$GITHUB_OUTPUT"
+
+      - name: Set up shared proxy
         uses: ./.github/actions/setup-squid
         with:
-          proxy: ${{ vars[matrix.proxy_variable] }}
+          proxy: ${{ steps.proxy.outputs.url }}
           ca: ${{ vars.SQUID_CA }}
           tailscale-client-id: ${{ vars.SQUID_TAILSCALE_CLIENT_ID }}
           tailscale-audience: ${{ vars.SQUID_TAILSCALE_AUDIENCE }}
 
-      - name: Verify Squid certificates and egress
+      - name: Verify proxy certificates and egress
         shell: bash
         run: |
           set -euo pipefail
@@ -60,7 +78,7 @@ jobs:
             exit 1
           fi
 
-      - name: Request live URLs through Squid
+      - name: Request live URLs through the proxy
         shell: bash
         env:
           START_AT: ${{ inputs.start_at }}
@@ -105,3 +123,38 @@ jobs:
           [[ "$(od -An -N4 -tx1 "$temp/crx-1" | tr -d '[:space:]')" == 43723234 ]]
           cmp "$temp/crx-1" "$temp/crx-2"
           (cd "$temp" && sha256sum page-1 crx-1)
+
+      - name: Verify POST replay and cache isolation
+        shell: bash
+        env:
+          POOL: ${{ matrix.pool }}
+        run: |
+          set -euo pipefail
+          temp="$(mktemp -d "$RUNNER_TEMP/proxy-post.XXXXXX")"
+          url="https://httpbingo.org/post?ci=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$POOL"
+
+          fetch() {
+            curl --disable --fail --silent --show-error --noproxy '' \
+              --connect-timeout 5 --max-time 25 --proxy "$HTTPS_PROXY" --cacert "$SQUID_CA_CERT" \
+              --header "Cookie: ci-replay=$3" --data-urlencode "body=$2" \
+              --dump-header "$temp/$1.headers" --output "$temp/$1.json" "$url"
+            jq -e --arg body "$2" '.form.body == [$body]' "$temp/$1.json" >/dev/null
+          }
+
+          # Fan out without prewarming to verify that concurrent misses share one upstream request.
+          pids=()
+          for n in {1..20}; do
+            fetch "repeat-$n" one original &
+            pids+=("$!")
+          done
+          for pid in "${pids[@]}"; do wait "$pid"; done
+          test "$(grep -ilm1 '^x-ci-cache: MISS' "$temp"/repeat-*.headers | wc -l)" -eq 1
+          test "$(grep -ilm1 '^x-ci-cache: HIT' "$temp"/repeat-*.headers | wc -l)" -eq 19
+
+          fetch changed-body two original
+          fetch changed-cookie one other
+          fetch repeat-cookie one other
+          grep -iq '^x-ci-cache: MISS' "$temp/changed-body.headers"
+          grep -iq '^x-ci-cache: MISS' "$temp/changed-cookie.headers"
+          grep -iq '^x-ci-cache: HIT' "$temp/repeat-cookie.headers"
+          cmp "$temp/changed-cookie.json" "$temp/repeat-cookie.json"
