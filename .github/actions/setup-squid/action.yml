@@ -35,6 +35,20 @@ runs:
         SQUID_PROXY: ${{ inputs.proxy }}
       run: bash "$GITHUB_ACTION_PATH/macos-dns.sh" save
 
+    - id: proxy-peer
+      name: Select the Tailscale proxy peer
+      if: runner.environment == 'github-hosted' && inputs.tailscale-client-id != ''
+      shell: bash
+      env:
+        SQUID_PROXY: ${{ inputs.proxy }}
+      run: |
+        # tailscale up can succeed before the new runner is visible to the proxy peer.
+        if [[ "$SQUID_PROXY" =~ ^http://([a-zA-Z0-9._-]+):[0-9]+/?$ ]]; then
+          printf 'host=%s\n' "${BASH_REMATCH[1]}" >>"$GITHUB_OUTPUT"
+        elif [[ "$SQUID_PROXY" =~ ^http://\[([0-9A-Fa-f:]+)\]:[0-9]+/?$ ]]; then
+          printf 'host=%s\n' "${BASH_REMATCH[1]}" >>"$GITHUB_OUTPUT"
+        fi
+
     - name: Connect to Tailscale
       if: runner.environment == 'github-hosted' && inputs.tailscale-client-id != ''
       uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0
@@ -42,6 +56,7 @@ runs:
         oauth-client-id: ${{ inputs.tailscale-client-id }}
         audience: ${{ inputs.tailscale-audience }}
         tags: tag:squid-ci
+        ping: ${{ steps.proxy-peer.outputs.host }}
         args: ${{ steps.macos-dns.outputs.tailscale-args }}
 
     - name: Restore hosted macOS DNS before direct or proxied traffic
