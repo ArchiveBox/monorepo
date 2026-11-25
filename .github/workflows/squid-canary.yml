@@ -102,6 +102,20 @@ jobs:
             grep -iq '^x-ci-cache: REPLAY-MISS' "$temp/$scheme.headers"
           done
 
+      - name: Verify the isolated test network
+        if: inputs.replay_only && runner.environment == 'github-hosted'
+        shell: bash
+        run: |
+          set -euo pipefail
+          node .github/ci-proxy/run-isolated.mjs bash -ec '
+            test -z "$(ip -4 route show default)"
+            test -z "$(ip -6 route show default)"
+            if curl --disable --silent --noproxy "*" --connect-timeout 2 https://1.1.1.1/ -o /dev/null; then
+              exit 1
+            fi
+            curl --disable --fail --silent --show-error --max-time 5 https://example.com/ | grep -q "Example Domain"
+          '
+
       - name: Request live URLs through the proxy
         if: '!inputs.replay_only'
         shell: bash
