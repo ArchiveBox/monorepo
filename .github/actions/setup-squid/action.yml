@@ -61,10 +61,10 @@ runs:
 
         temp="$(mktemp -d "$RUNNER_TEMP/squid.XXXXXX")"
         printf '%s\n' "$SQUID_CA" >"$temp/ca.crt"
-        # Use a separate URL so the check leaves the canary workload cold.
+        # The proxy serves this locally, so the check also works without upstream access.
         if ! status="$(curl --disable --fail --silent --show-error --noproxy '' \
           --connect-timeout 3 --max-time 5 --proxy "$SQUID_PROXY" --cacert "$temp/ca.crt" \
-          --output /dev/null --write-out '%{http_code}' https://www.example.com/)"; then
+          --output /dev/null --write-out '%{http_code}' https://example.com/)"; then
           echo "::error title=Squid unavailable::HTTPS through the configured proxy failed."
           exit 1
         fi

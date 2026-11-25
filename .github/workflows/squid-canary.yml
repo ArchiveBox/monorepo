@@ -11,6 +11,10 @@ on:
         description: Optional port for validating a replacement proxy
         required: false
         default: ''
+      replay_only:
+        description: Verify the replay-only listener without sending traffic upstream
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -44,8 +48,12 @@ jobs:
         env:
           DEFAULT_PROXY: ${{ vars[matrix.proxy_variable] }}
           PROXY_PORT: ${{ inputs.proxy_port }}
+          REPLAY_ONLY: ${{ inputs.replay_only }}
         run: |
           set -euo pipefail
+          if [[ "$REPLAY_ONLY" == true && -z "$PROXY_PORT" ]]; then
+            PROXY_PORT=3129
+          fi
           if [[ -n "$PROXY_PORT" ]]; then
             [[ "$PROXY_PORT" =~ ^[0-9]{1,5}$ ]]
             DEFAULT_PROXY="${DEFAULT_PROXY%:*}:$PROXY_PORT"
@@ -64,10 +72,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Use the health-check host so the cold-cache workload remains separate.
           timeout 5 openssl s_client -proxy "${HTTPS_PROXY#http://}" \
-            -connect www.example.com:443 -servername www.example.com \
-            -verify_hostname www.example.com -verify_return_error -x509_strict \
+            -connect example.com:443 -servername example.com \
+            -verify_hostname example.com -verify_return_error -x509_strict \
             -CAfile "$SQUID_CA_CERT" -brief </dev/null
 
           status="$(curl --disable --silent --show-error --noproxy '' \
@@ -78,7 +85,25 @@ jobs:
             exit 1
           fi
 
+      - name: Verify replay-only HTTPS and HTTP
+        if: inputs.replay_only
+        shell: bash
+        run: |
+          set -euo pipefail
+          temp="$(mktemp -d "$RUNNER_TEMP/proxy-replay.XXXXXX")"
+          fetch=(curl --disable --silent --show-error --noproxy '' --proxy "$HTTPS_PROXY" \
+            --cacert "$SQUID_CA_CERT" --max-time 5)
+          "${fetch[@]}" --fail https://example.com/ | grep -q 'Example Domain'
+          for scheme in http https; do
+            url="$scheme://httpbingo.org/post?replay-canary=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            status="$("${fetch[@]}" --data 'body=cache-miss' --dump-header "$temp/$scheme.headers" \
+              --output "$temp/$scheme.body" --write-out '%{http_code}' "$url")"
+            [[ "$status" == 502 ]]
+            grep -iq '^x-ci-cache: REPLAY-MISS' "$temp/$scheme.headers"
+          done
+
       - name: Request live URLs through the proxy
+        if: '!inputs.replay_only'
         shell: bash
         env:
           START_AT: ${{ inputs.start_at }}
@@ -125,6 +150,7 @@ jobs:
           (cd "$temp" && sha256sum page-1 crx-1)
 
       - name: Verify POST replay and cache isolation
+        if: '!inputs.replay_only'
         shell: bash
         env:
           POOL: ${{ matrix.pool }}

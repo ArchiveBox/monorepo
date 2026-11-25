@@ -47,6 +47,7 @@ BROWSER_HEADERS = {
     b"sec-fetch-user", b"sec-ch-ua", b"sec-ch-ua-mobile", b"sec-ch-ua-platform", b"sec-ch-ua-full-version-list",
     b"sec-ch-ua-arch", b"sec-ch-ua-bitness", b"sec-ch-ua-platform-version", b"sec-ch-ua-model",
 }
+STATIC_TYPES = {"text/css", "text/javascript", "application/javascript", "application/wasm"}
 
 
 def public_target(request: http.Request) -> bool:
@@ -141,6 +142,18 @@ def freshness(response: http.Response) -> int:
     return max(DAY, remaining)
 
 
+def shared_asset(response: http.Response) -> bool:
+    directives = {item.partition("=")[0].strip().lower() for item in response.headers.get("Cache-Control", "").split(",")}
+    vary = {item.strip().lower() for item in response.headers.get("Vary", "").split(",")}
+    kind = response.headers.get("Content-Type", "").partition(";")[0].strip().lower()
+    return (
+        response.status_code == 200
+        and "public" in directives and not directives & {"no-cache", "no-store", "private"}
+        and not vary & {"*", "cookie"} and "Set-Cookie" not in response.headers
+        and (kind in STATIC_TYPES or kind.startswith(("image/", "font/", "audio/", "video/")))
+    )
+
+
 def result(flow: http.HTTPFlow, outcome: str) -> None:
     host, method = flow.metadata.get("destination", (flow.request.host, flow.request.method))
     status = flow.response.status_code if flow.response else 0
@@ -148,6 +161,8 @@ def result(flow: http.HTTPFlow, outcome: str) -> None:
     summary.update(flow.metadata.get("observation", {}))
     if flow.metadata.get("range_from_full"):
         summary["range_from_full"] = True
+    if flow.metadata.get("shared_asset"):
+        summary["shared_asset"] = True
     if flow.response is not None:
         summary["vary"] = sorted(field.lower().strip() for field in flow.response.headers.get("Vary", "").split(",") if field.strip())
         summary["public"] = bool(re.search(r"(?:^|,)\s*public(?:\s*,|\s*$)", flow.response.headers.get("Cache-Control", ""), re.I))
@@ -161,6 +176,7 @@ class ReplayCache:
             "/": (200, "text/html; charset=utf-8", (example / "index.html").read_bytes()),
             "/s.js": (200, "text/javascript; charset=utf-8", (example / "s.js").read_bytes()),
         } if example.is_dir() else {}
+        self.replay_port = int(os.environ.get("PROXY_REPLAY_PORT", "0"))
         self.root = Path(os.environ["PROXY_CACHE_DIR"])
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.objects = self.root / "objects"
@@ -168,6 +184,7 @@ class ReplayCache:
         self.db = sqlite3.connect(self.root / "index.sqlite3", isolation_level=None)
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=NORMAL")
+        self.db.execute("PRAGMA foreign_keys=ON")
         self.db.execute("""
             CREATE TABLE IF NOT EXISTS entries (
                 key TEXT PRIMARY KEY, name TEXT NOT NULL, size INTEGER NOT NULL,
@@ -175,6 +192,13 @@ class ReplayCache:
             )
         """)
         self.db.execute("CREATE INDEX IF NOT EXISTS entries_used ON entries (used)")
+        self.db.execute("""
+            CREATE TABLE IF NOT EXISTS public_assets (
+                key TEXT PRIMARY KEY REFERENCES entries(key) ON DELETE CASCADE,
+                cookie_free_key TEXT NOT NULL
+            )
+        """)
+        self.db.execute("CREATE INDEX IF NOT EXISTS public_assets_cookie_free ON public_assets (cookie_free_key)")
         self.pending = {}
         self.relays = {}
         self.latest_cleanup = 0
@@ -307,6 +331,29 @@ class ReplayCache:
             flow.request = http.Request.make("GET", f"http://127.0.0.1:{self.relay.server_port}{endpoint}")
         return True
 
+    def lookup_public_asset(self, flow, cookie_free_key):
+        row = self.db.execute("""
+            SELECT entries.key FROM public_assets JOIN entries USING (key)
+            WHERE cookie_free_key=? AND expires>?
+            ORDER BY expires DESC LIMIT 1
+        """, (cookie_free_key, int(time.time()))).fetchone()
+        if row and self.lookup(flow, row[0]):
+            flow.metadata["shared_asset"] = True
+            return True
+        return False
+
+    def replay_only(self, client) -> bool:
+        return client.sockname[1] == self.replay_port
+
+    def refuse_replay_miss(self, flow) -> None:
+        flow.metadata["replay_miss"] = True
+        flow.response = http.Response.make(502, b"No recorded response for this request.\n", {"x-ci-cache": "REPLAY-MISS"})
+
+    def server_connect(self, data) -> None:
+        # Guard the socket as well as the HTTP request, including raw CONNECT traffic.
+        if self.replay_only(data.client) and data.server.address != ("127.0.0.1", self.relay.server_port):
+            data.server.error = "Upstream connections are disabled on the replay-only port."
+
     def http_connect(self, flow: http.HTTPFlow) -> None:
         if not allowed(flow):
             flow.response = http.Response.make(403, b"Public web destinations only.\n")
@@ -339,6 +386,8 @@ class ReplayCache:
             flow.metadata["local"] = True
             return
         if HEALTH_PATH.search(flow.request.path) or flow.request.raw_content is None or flow.request.headers.get("Upgrade"):
+            if self.replay_only(flow.client_conn):
+                self.refuse_replay_miss(flow)
             return
         key = fingerprint(flow.request)
         flow.metadata["cache_key"] = key
@@ -350,9 +399,22 @@ class ReplayCache:
             and not any(name.lower().startswith("if-") for name in flow.request.headers)
             else None
         )
+        headers = flow.request.headers
+        # Public static assets can share a representation across cookies when the origin's Vary permits it.
+        if (
+            flow.request.method == "GET" and "Cookie" in headers and "Authorization" not in headers
+            and "Range" not in headers and not any(name.lower().startswith("if-") for name in headers)
+        ):
+            flow.metadata["public_asset_key"] = fingerprint(flow.request, REQUEST_CACHE_IGNORED | {b"cookie"})
         try:
             while not self.lookup(flow, key):
                 if complete and self.lookup(flow, complete, byte_range):
+                    return
+                cookie_free_key = flow.metadata.get("public_asset_key")
+                if cookie_free_key and self.lookup_public_asset(flow, cookie_free_key):
+                    return
+                if self.replay_only(flow.client_conn):
+                    self.refuse_replay_miss(flow)
                     return
                 other = self.pending.get(key)
                 if other is None:
@@ -364,6 +426,8 @@ class ReplayCache:
         except (OSError, ValueError, sqlite3.Error, TimeoutError):
             LOG.warning("Cache lookup unavailable")
             flow.metadata.pop("cache_key", None)
+            if self.replay_only(flow.client_conn):
+                self.refuse_replay_miss(flow)
 
     def responseheaders(self, flow: http.HTTPFlow) -> None:
         response = flow.response
@@ -444,12 +508,21 @@ class ReplayCache:
         if size > BUFFER_SIZE and trailers:
             return False
         metadata = json.dumps((response.status_code, response.reason, fields, trailers))
+        cookie_free_key = flow.metadata.get("public_asset_key")
+        public = cookie_free_key and not trailers and shared_asset(response)
         name = uuid.uuid4().hex
         object_path = self.objects / name
         path.rename(object_path)
         try:
+            if public:
+                self.db.execute("BEGIN")
             self.db.execute("INSERT INTO entries VALUES (?,?,?,?,?,?)", (key, name, size, now + freshness(response), now, metadata))
+            if public:
+                self.db.execute("INSERT INTO public_assets VALUES (?,?)", (key, cookie_free_key))
+                self.db.execute("COMMIT")
         except sqlite3.Error:
+            if self.db.in_transaction:
+                self.db.execute("ROLLBACK")
             object_path.unlink(missing_ok=True)
             raise
         self.total += size
@@ -479,6 +552,8 @@ class ReplayCache:
             elif flow.metadata.get("local"):
                 flow.response.headers["x-ci-cache"] = "LOCAL"
                 result(flow, "local")
+            elif flow.metadata.get("replay_miss"):
+                result(flow, "replay_miss")
             elif flow.metadata.get("hit"):
                 flow.response.headers["x-ci-cache"] = "HIT"
                 result(flow, "hit")
