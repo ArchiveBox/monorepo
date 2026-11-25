@@ -34,8 +34,8 @@ HOP_HEADERS = {
     b"proxy-authenticate", b"te", b"trailer", b"transfer-encoding", b"upgrade",
 }
 REQUEST_CACHE_IGNORED = {b"cache-control", b"pragma", b"content-length"}
-HEALTH_PATH = re.compile(r"/(?:healthz?|healthcheck|livez|liveness|readyz?|readiness)(?:/|\?|$)", re.I)
 SINGLE_RANGE = re.compile(r"bytes=([0-9]{0,19})-([0-9]{0,19})", re.I)
+CACHE_AGE = re.compile(r'(?:^|,)\s*(?:s-maxage|max-age)\s*=\s*"?([0-9]{1,12})', re.I)
 IDENTITY_HEADERS = {b"cookie", b"authorization"}
 REPRESENTATION_HEADERS = {
     b"accept", b"accept-encoding", b"accept-language", b"available-dictionary", b"content-type",
@@ -47,7 +47,7 @@ BROWSER_HEADERS = {
     b"sec-fetch-user", b"sec-ch-ua", b"sec-ch-ua-mobile", b"sec-ch-ua-platform", b"sec-ch-ua-full-version-list",
     b"sec-ch-ua-arch", b"sec-ch-ua-bitness", b"sec-ch-ua-platform-version", b"sec-ch-ua-model",
 }
-STATIC_TYPES = {"text/css", "text/javascript", "application/javascript", "application/wasm"}
+SHARED_CACHE_IGNORED = REQUEST_CACHE_IGNORED | BROWSER_HEADERS | {b"cookie"}
 
 
 def public_target(request: http.Request) -> bool:
@@ -92,6 +92,10 @@ def fingerprint(request: http.Request, ignored=REQUEST_CACHE_IGNORED) -> str:
     return key.hexdigest()
 
 
+def public_asset_key(request: http.Request) -> str:
+    return "shared:" + fingerprint(request, SHARED_CACHE_IGNORED)
+
+
 def range_bounds(byte_range, size):
     start, end = byte_range.groups()
     if not start:
@@ -127,7 +131,7 @@ def observe(request: http.Request) -> dict:
 
 
 def freshness(response: http.Response) -> int:
-    ages = re.findall(r'(?i)(?:^|,)\s*(?:s-maxage|max-age)\s*=\s*"?([0-9]{1,12})', response.headers.get("Cache-Control", ""))
+    ages = CACHE_AGE.findall(response.headers.get("Cache-Control", ""))
     age = response.headers.get("Age", "")
     remaining = max((int(value) for value in ages), default=0) - (int(age) if age.isdecimal() else 0)
     expires = response.headers.get("Expires")
@@ -143,14 +147,17 @@ def freshness(response: http.Response) -> int:
 
 
 def shared_asset(response: http.Response) -> bool:
-    directives = {item.partition("=")[0].strip().lower() for item in response.headers.get("Cache-Control", "").split(",")}
-    vary = {item.strip().lower() for item in response.headers.get("Vary", "").split(",")}
-    kind = response.headers.get("Content-Type", "").partition(";")[0].strip().lower()
+    cache_control = response.headers.get("Cache-Control", "")
+    directives = {item.partition("=")[0].strip().lower() for item in cache_control.split(",")}
+    vary = {item.strip().lower() for item in response.headers.get("Vary", "").split(",") if item.strip()}
+    # Only a response that permits shared reuse can ignore browser metadata,
+    # and any header named in Vary must remain part of its cache key.
     return (
         response.status_code == 200
-        and "public" in directives and not directives & {"no-cache", "no-store", "private"}
-        and not vary & {"*", "cookie"} and "Set-Cookie" not in response.headers
-        and (kind in STATIC_TYPES or kind.startswith(("image/", "font/", "audio/", "video/")))
+        and ("public" in directives or any(int(age) >= DAY for age in CACHE_AGE.findall(cache_control)))
+        and not directives & {"no-cache", "no-store", "private"}
+        and "*" not in vary and not any(field.encode("latin-1") in SHARED_CACHE_IGNORED for field in vary)
+        and "Set-Cookie" not in response.headers
     )
 
 
@@ -174,11 +181,6 @@ def result(flow: http.HTTPFlow, outcome: str) -> None:
 
 class ReplayCache:
     def running(self) -> None:
-        example = Path(__file__).parent / "example"
-        self.example = {
-            "/": (200, "text/html; charset=utf-8", (example / "index.html").read_bytes()),
-            "/s.js": (200, "text/javascript; charset=utf-8", (example / "s.js").read_bytes()),
-        } if example.is_dir() else {}
         self.replay_port = int(os.environ.get("PROXY_REPLAY_PORT", "0"))
         self.root = Path(os.environ["PROXY_CACHE_DIR"])
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -273,16 +275,27 @@ class ReplayCache:
 
     def lookup(self, flow, key, byte_range=None):
         now = int(time.time())
-        row = self.db.execute(
-            "SELECT name, size, expires, used, response FROM entries WHERE key=?", (key,),
-        ).fetchone()
+        row = self.db.execute("""
+            SELECT name, size, expires, used, response, cookie_free_key
+            FROM entries LEFT JOIN public_assets USING (key) WHERE key=?
+        """, (key,)).fetchone()
         if row is None:
             return False
-        name, object_size, expires, used, metadata = row
+        name, object_size, expires, used, metadata, stored_public_key = row
         if expires <= now:
             self.discard(key, name, object_size)
             return False
         status, reason, fields, trailers = json.loads(metadata)
+        public_key = flow.metadata.get("public_asset_key")
+        if status == 200 and not trailers and public_key and key == flow.metadata.get("cache_key") and stored_public_key != public_key:
+            # Upgrade existing exact matches without fetching their bodies again.
+            cached = http.Response.make(status)
+            cached.headers = http.Headers([(k.encode("latin-1"), v.encode("latin-1")) for k, v in fields])
+            if shared_asset(cached):
+                self.db.execute("""
+                    INSERT INTO public_assets VALUES (?, ?)
+                    ON CONFLICT(key) DO UPDATE SET cookie_free_key=excluded.cookie_free_key
+                """, (key, public_key))
         offset, size = 0, object_size
         if byte_range:
             # ZIP and WACZ readers fetch many small slices. A fresh complete
@@ -379,19 +392,7 @@ class ReplayCache:
         if flow.response is not None:
             flow.metadata["blocked"] = True
             return
-        if (
-            self.example and flow.request.host.lower() in {"example.com", "www.example.com"}
-            and flow.request.method in ("GET", "HEAD")
-        ):
-            _, mime, default = self.example["/"]
-            status, mime, body = self.example.get(flow.request.path.partition("?")[0], (404, mime, default))
-            flow.response = http.Response.make(
-                status, b"" if flow.request.method == "HEAD" else body,
-                {"Content-Type": mime, "Content-Length": str(len(body))},
-            )
-            flow.metadata["local"] = True
-            return
-        if HEALTH_PATH.search(flow.request.path) or flow.request.raw_content is None or flow.request.headers.get("Upgrade"):
+        if flow.request.raw_content is None or flow.request.headers.get("Upgrade"):
             if self.replay_only(flow.client_conn):
                 self.refuse_replay_miss(flow)
             return
@@ -406,18 +407,17 @@ class ReplayCache:
             else None
         )
         headers = flow.request.headers
-        # Public static assets can share a representation across cookies when the origin's Vary permits it.
         if (
-            flow.request.method == "GET" and "Cookie" in headers and "Authorization" not in headers
+            flow.request.method == "GET" and "Authorization" not in headers
             and "Range" not in headers and not any(name.lower().startswith("if-") for name in headers)
         ):
-            flow.metadata["public_asset_key"] = fingerprint(flow.request, REQUEST_CACHE_IGNORED | {b"cookie"})
+            flow.metadata["public_asset_key"] = public_asset_key(flow.request)
         try:
             while not self.lookup(flow, key):
                 if complete and self.lookup(flow, complete, byte_range):
                     return
-                cookie_free_key = flow.metadata.get("public_asset_key")
-                if cookie_free_key and self.lookup_public_asset(flow, cookie_free_key):
+                public_key = flow.metadata.get("public_asset_key")
+                if public_key and self.lookup_public_asset(flow, public_key):
                     return
                 if self.replay_only(flow.client_conn):
                     self.refuse_replay_miss(flow)
@@ -514,8 +514,8 @@ class ReplayCache:
         if size > BUFFER_SIZE and trailers:
             return False
         metadata = json.dumps((response.status_code, response.reason, fields, trailers))
-        cookie_free_key = flow.metadata.get("public_asset_key")
-        public = cookie_free_key and not trailers and shared_asset(response)
+        public_key = flow.metadata.get("public_asset_key")
+        public = public_key and not trailers and shared_asset(response)
         name = uuid.uuid4().hex
         object_path = self.objects / name
         path.rename(object_path)
@@ -524,7 +524,7 @@ class ReplayCache:
                 self.db.execute("BEGIN")
             self.db.execute("INSERT INTO entries VALUES (?,?,?,?,?,?)", (key, name, size, now + freshness(response), now, metadata))
             if public:
-                self.db.execute("INSERT INTO public_assets VALUES (?,?)", (key, cookie_free_key))
+                self.db.execute("INSERT INTO public_assets VALUES (?,?)", (key, public_key))
                 self.db.execute("COMMIT")
         except sqlite3.Error:
             if self.db.in_transaction:
@@ -555,9 +555,6 @@ class ReplayCache:
         try:
             if flow.metadata.get("blocked"):
                 result(flow, "blocked")
-            elif flow.metadata.get("local"):
-                flow.response.headers["x-ci-cache"] = "LOCAL"
-                result(flow, "local")
             elif flow.metadata.get("replay_miss"):
                 result(flow, "replay_miss")
             elif flow.metadata.get("hit"):
