@@ -104,6 +104,12 @@ runs:
           fi
           printf '\nca_certificate = %s\n' "$temp/ca-bundle.crt"
         } >"$temp/wgetrc"
+        if [[ "$RUNNER_OS" == macOS ]]; then
+          # Brew keeps proxy variables but strips SSL_CERT_FILE and CURL_CA_BUNDLE
+          # before its portable Ruby bootstrap. Pass the same bundle via its curl config.
+          printf 'cacert = "%s"\n' "$temp/ca-bundle.crt" >"$temp/brew.curlrc"
+          printf 'HOMEBREW_CURLRC=%s\n' "$temp/brew.curlrc" >>"$GITHUB_ENV"
+        fi
         # Runner control-plane and artifact transfers need fresh responses.
         # Dependency registries use the shared cache like other test inputs.
         # HTTPX accepts bare IPv6 addresses in NO_PROXY and rejects bracketed literals.
