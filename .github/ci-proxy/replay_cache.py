@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import sqlite3
+import socket
 import time
 import uuid
 from datetime import timezone
@@ -22,6 +23,8 @@ from mitmproxy import http
 LOG = logging.getLogger(__name__)
 DAY = 24 * 60 * 60
 BUFFER_SIZE = 4 * 1024 * 1024
+INLINE_RESPONSE_LIMIT = 256 * 1024
+RELAY_SEND_BUFFER = 128 * 1024
 MAX_BUFFERED_REQUEST = 32 * 1024 * 1024
 MAX_OBJECT = 1024 * 1024 * 1024
 CACHE_SIZE = 45_000_000_000
@@ -192,6 +195,18 @@ def result(flow: http.HTTPFlow, outcome: str) -> None:
     LOG.info("proxy_cache %s", json.dumps(summary, separators=(",", ":")))
 
 
+class RelayServer(ThreadingHTTPServer):
+    def get_request(self):
+        conn, address = super().get_request()
+        try:
+            # Large cache hits use loopback, so each connection needs only a small send queue.
+            conn.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, RELAY_SEND_BUFFER)
+        except OSError:
+            conn.close()
+            raise
+        return conn, address
+
+
 class ReplayCache:
     def running(self) -> None:
         self.replay_port = int(os.environ.get("PROXY_REPLAY_PORT", "0"))
@@ -232,7 +247,7 @@ class ReplayCache:
                 except FileNotFoundError:
                     pass
         self.evict(int(time.time()), 0)
-        self.relay = ThreadingHTTPServer(("127.0.0.1", 0), self.make_relay_handler())
+        self.relay = RelayServer(("127.0.0.1", 0), self.make_relay_handler())
         Thread(target=self.relay.serve_forever, daemon=True).start()
 
     def make_relay_handler(self):
@@ -258,13 +273,7 @@ class ReplayCache:
                     self.send_header("Content-Length", str(size))
                     self.end_headers()
                     try:
-                        remaining = size
-                        while remaining:
-                            chunk = body.read(min(remaining, 256 * 1024))
-                            if not chunk:
-                                break
-                            self.wfile.write(chunk)
-                            remaining -= len(chunk)
+                        self.connection.sendfile(body, offset=body.tell(), count=size)
                     except (BrokenPipeError, ConnectionResetError):
                         pass
 
@@ -342,7 +351,7 @@ class ReplayCache:
             self.discard(key, name, object_size)
             return False
         body.seek(offset)
-        if size <= BUFFER_SIZE or trailers:
+        if size <= INLINE_RESPONSE_LIMIT or trailers or (flow.metadata.get("icloud_export_poll") and size <= BUFFER_SIZE):
             with body:
                 content = body.read(size)
             loaded = http.Response.make(status, content)
@@ -487,7 +496,7 @@ class ReplayCache:
         if response.status_code == 101 or flow.request.method == "HEAD":
             return
         size = response.headers.get("Content-Length")
-        if size and size.isdecimal() and int(size) <= BUFFER_SIZE:
+        if size and size.isdecimal() and int(size) <= INLINE_RESPONSE_LIMIT:
             return
         if not flow.metadata.get("leader"):
             response.stream = True
