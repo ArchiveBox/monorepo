@@ -157,7 +157,10 @@ def shared_asset(response: http.Response) -> bool:
 def result(flow: http.HTTPFlow, outcome: str) -> None:
     host, method = flow.metadata.get("destination", (flow.request.host, flow.request.method))
     status = flow.response.status_code if flow.response else 0
-    summary = {"result": outcome, "host": host, "method": method, "status": status}
+    summary = {
+        "result": outcome, "host": host, "method": method, "status": status,
+        "listener_port": flow.client_conn.sockname[1],
+    }
     summary.update(flow.metadata.get("observation", {}))
     if flow.metadata.get("range_from_full"):
         summary["range_from_full"] = True
@@ -376,7 +379,10 @@ class ReplayCache:
         if flow.response is not None:
             flow.metadata["blocked"] = True
             return
-        if self.example and flow.request.host == "example.com" and flow.request.method in ("GET", "HEAD"):
+        if (
+            self.example and flow.request.host.lower() in {"example.com", "www.example.com"}
+            and flow.request.method in ("GET", "HEAD")
+        ):
             _, mime, default = self.example["/"]
             status, mime, body = self.example.get(flow.request.path.partition("?")[0], (404, mime, default))
             flow.response = http.Response.make(
