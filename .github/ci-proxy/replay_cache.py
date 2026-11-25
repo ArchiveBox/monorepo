@@ -169,12 +169,12 @@ def shared_asset_vary(response: http.Response):
     return sorted(vary | {"accept-encoding", "origin", "access-control-request-method", "access-control-request-headers"})
 
 
-def scheduled_for_download(response: http.Response) -> bool:
+def pending_icloud_export(response: http.Response) -> bool:
     try:
         data = response.json()
     except (TypeError, ValueError):
         return False
-    return isinstance(data, dict) and data.get("job_status") == "SCHEDULED_FOR_DOWNLOAD"
+    return isinstance(data, dict) and data.get("job_status") in ("SCHEDULED_FOR_DOWNLOAD", "SENT_TO_ACTIVEMQ")
 
 
 def result(flow: http.HTTPFlow, outcome: str) -> None:
@@ -359,7 +359,7 @@ class ReplayCache:
             loaded.headers = http.Headers([(k.encode("latin-1"), v.encode("latin-1")) for k, v in fields])
             if trailers:
                 loaded.trailers = http.Headers([(k.encode("latin-1"), v.encode("latin-1")) for k, v in trailers])
-            if flow.metadata.get("icloud_export_poll") and scheduled_for_download(loaded):
+            if flow.metadata.get("icloud_export_poll") and pending_icloud_export(loaded):
                 self.discard(key, name, object_size)
                 return False
             flow.response = loaded
@@ -557,7 +557,7 @@ class ReplayCache:
                 poll.headers = response.headers
             else:
                 poll = response
-            if scheduled_for_download(poll):
+            if pending_icloud_export(poll):
                 return False
         now = int(time.time())
         key = flow.metadata["cache_key"]
