@@ -260,6 +260,8 @@ class ReplayCache:
                 pass
 
             def do_GET(self):
+                # Replay tokens are single-use; do not retain an idle loopback worker.
+                self.close_connection = True
                 entry = cache.relays.pop(self.path, None)
                 if entry is None:
                     self.send_error(404)
