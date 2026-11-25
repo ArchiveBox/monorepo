@@ -1,7 +1,9 @@
 """Record complete HTTP exchanges on demand and replay exact repeats for CI."""
 
 import asyncio
+import gzip
 import hashlib
+import io
 import ipaddress
 import json
 import logging
@@ -39,6 +41,10 @@ HOP_HEADERS = {
 REQUEST_CACHE_IGNORED = {b"cache-control", b"pragma", b"content-length"}
 SINGLE_RANGE = re.compile(r"bytes=([0-9]{0,19})-([0-9]{0,19})", re.I)
 CACHE_AGE = re.compile(r'(?:^|,)\s*(?:s-maxage|max-age)\s*=\s*"?([0-9]{1,12})', re.I)
+DRIVE_EXPORT_STATUS_PATH = re.compile(
+    r"/v1/exports/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}", re.I
+)
+DRIVE_EXPORT_STATUS_MAX = 64 * 1024
 ICLOUD_EXPORT_HOST = re.compile(r"(?:p[0-9]+-)?iworkexportws\.icloud\.com", re.I)
 IDENTITY_HEADERS = {b"cookie", b"authorization"}
 REPRESENTATION_HEADERS = {
@@ -138,20 +144,47 @@ def observe(request: http.Request) -> dict:
     }
 
 
-def freshness(response: http.Response) -> int:
-    ages = CACHE_AGE.findall(response.headers.get("Cache-Control", ""))
-    age = response.headers.get("Age", "")
-    remaining = max((int(value) for value in ages), default=0) - (int(age) if age.isdecimal() else 0)
-    expires = response.headers.get("Expires")
+def header_expiry(headers):
+    expires = headers.get("expires")
     if expires:
         try:
             when = parsedate_to_datetime(expires)
             if when.tzinfo is None:
                 when = when.replace(tzinfo=timezone.utc)
-            remaining = max(remaining, int(when.timestamp() - time.time()))
+            return int(when.timestamp())
         except (ValueError, TypeError, OverflowError):
             pass
+    return None
+
+
+def freshness(response: http.Response) -> int:
+    ages = CACHE_AGE.findall(response.headers.get("Cache-Control", ""))
+    age = response.headers.get("Age", "")
+    remaining = max((int(value) for value in ages), default=0) - (int(age) if age.isdecimal() else 0)
+    expires = header_expiry(response.headers)
+    if expires is not None:
+        remaining = max(remaining, expires - int(time.time()))
     return max(DAY, remaining)
+
+
+def replay_expiry(method, status, headers, expires):
+    # Cache public downloads independently of the control requests that issue
+    # short-lived credentials. Replaying the latter past expiry breaks even
+    # otherwise cacheable downloads.
+    if "no-store" in {item.strip().lower() for item in headers.get("cache-control", "").split(",")}:
+        if method not in ("GET", "HEAD") or status >= 400:
+            return 0
+        # Some export entry pages use an explicit past Expires value rather
+        # than changing their URL when the embedded session goes stale.
+        expiry = header_expiry(headers)
+        if expiry is not None:
+            expires = min(expires, expiry)
+    token_expiry = headers.get("x-xet-token-expiration")
+    if token_expiry is not None:
+        if not re.fullmatch(r"[0-9]{1,12}", token_expiry):
+            return 0
+        return min(expires, int(token_expiry))
+    return expires
 
 
 def shared_asset_vary(response: http.Response):
@@ -175,6 +208,44 @@ def pending_icloud_export(response: http.Response) -> bool:
     except (TypeError, ValueError):
         return False
     return isinstance(data, dict) and data.get("job_status") in ("SCHEDULED_FOR_DOWNLOAD", "SENT_TO_ACTIVEMQ")
+
+
+def pending_drive_export(response: http.Response) -> bool:
+    if response.status_code != 200 or response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() != "application/json":
+        return False
+    content = response.raw_content or b""
+    if len(content) > DRIVE_EXPORT_STATUS_MAX:
+        return False
+    encoding = response.headers.get("Content-Encoding", "identity").strip().lower()
+    try:
+        if encoding == "gzip":
+            with gzip.GzipFile(fileobj=io.BytesIO(content)) as stream:
+                content = stream.read(DRIVE_EXPORT_STATUS_MAX + 1)
+        elif encoding != "identity":
+            return False
+        if len(content) > DRIVE_EXPORT_STATUS_MAX:
+            return False
+        data = json.loads(content)
+    except (ValueError, OSError, EOFError):
+        return False
+    job = data.get("exportJob") if isinstance(data, dict) else None
+    return isinstance(job, dict) and job.get("status") == "QUEUED"
+
+
+def pending_export_response(flow: http.HTTPFlow, response: http.Response) -> bool:
+    if flow.metadata.get("icloud_export_poll"):
+        return pending_icloud_export(response)
+    if flow.metadata.get("drive_export_poll"):
+        return pending_drive_export(response)
+    return False
+
+
+def export_status_limit(flow: http.HTTPFlow) -> int:
+    if flow.metadata.get("icloud_export_poll"):
+        return BUFFER_SIZE
+    if flow.metadata.get("drive_export_poll"):
+        return DRIVE_EXPORT_STATUS_MAX
+    return -1
 
 
 def result(flow: http.HTTPFlow, outcome: str) -> None:
@@ -310,6 +381,9 @@ class ReplayCache:
             self.discard(key, name, object_size)
             return False
         status, reason, fields, trailers = json.loads(metadata)
+        if replay_expiry(flow.request.method, status, dict(fields), expires) <= now:
+            self.discard(key, name, object_size)
+            return False
         if shared:
             # A public response's body can be shared. Its cookies belong to the
             # client that received the original response.
@@ -353,7 +427,7 @@ class ReplayCache:
             self.discard(key, name, object_size)
             return False
         body.seek(offset)
-        if size <= INLINE_RESPONSE_LIMIT or trailers or (flow.metadata.get("icloud_export_poll") and size <= BUFFER_SIZE):
+        if size <= INLINE_RESPONSE_LIMIT or trailers or size <= export_status_limit(flow):
             with body:
                 content = body.read(size)
             loaded = http.Response.make(status, content)
@@ -365,7 +439,7 @@ class ReplayCache:
                 # Stored headers omit hop-by-hop framing, and HTTP/2 origins
                 # can omit Content-Length. Frame the raw bytes for HTTP/1.1.
                 loaded.headers["Content-Length"] = str(len(content))
-            if flow.metadata.get("icloud_export_poll") and pending_icloud_export(loaded):
+            if pending_export_response(flow, loaded):
                 self.discard(key, name, object_size)
                 return False
             flow.response = loaded
@@ -459,6 +533,11 @@ class ReplayCache:
             and flow.request.path.split("?", 1)[0].endswith("/check_shared_export_status")
         ):
             flow.metadata["icloud_export_poll"] = True
+        if (
+            flow.request.method == "GET" and flow.request.host.lower() == "takeout-pa.clients6.google.com"
+            and DRIVE_EXPORT_STATUS_PATH.fullmatch(flow.request.path.split("?", 1)[0])
+        ):
+            flow.metadata["drive_export_poll"] = True
         byte_range = SINGLE_RANGE.fullmatch(flow.request.headers.get("Range", "").strip())
         complete = (
             fingerprint(flow.request, REQUEST_CACHE_IGNORED | {b"range"})
@@ -538,7 +617,11 @@ class ReplayCache:
     def store(self, flow):
         response = flow.response
         writer = flow.metadata.get("writer")
-        if response.status_code < 200:
+        now = int(time.time())
+        expires = replay_expiry(
+            flow.request.method, response.status_code, response.headers, now + freshness(response)
+        )
+        if response.status_code < 200 or expires <= now:
             return False
         if writer:
             path, stream = writer
@@ -555,7 +638,7 @@ class ReplayCache:
             path.write_bytes(response.raw_content)
         else:
             return False
-        if flow.metadata.get("icloud_export_poll") and size <= BUFFER_SIZE:
+        if size <= export_status_limit(flow):
             # This response promises a later state for the same request. Keeping
             # it would prevent the exporter from ever seeing the download URL.
             if writer:
@@ -563,9 +646,8 @@ class ReplayCache:
                 poll.headers = response.headers
             else:
                 poll = response
-            if pending_icloud_export(poll):
+            if pending_export_response(flow, poll):
                 return False
-        now = int(time.time())
         key = flow.metadata["cache_key"]
         previous = self.db.execute("SELECT key, name, size FROM entries WHERE key=?", (key,)).fetchone()
         if previous is not None:
@@ -589,7 +671,7 @@ class ReplayCache:
         try:
             if public_key:
                 self.db.execute("BEGIN")
-            self.db.execute("INSERT INTO entries VALUES (?,?,?,?,?,?)", (key, name, size, now + freshness(response), now, metadata))
+            self.db.execute("INSERT INTO entries VALUES (?,?,?,?,?,?)", (key, name, size, expires, now, metadata))
             if public_key:
                 self.db.execute("INSERT INTO public_assets VALUES (?,?)", (key, public_key))
                 self.db.execute("COMMIT")
