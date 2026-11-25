@@ -60,7 +60,7 @@ if (invocation[0] === "--namespace") {
     bridge.close();
   }
 } else {
-  const proxy = new URL(process.env.HTTPS_PROXY || "");
+  const proxy = new URL(process.env.CI_REPLAY_PROXY || process.env.HTTPS_PROXY || "");
   if (proxy.protocol !== "http:" || !isIPv4(proxy.hostname) || proxy.port !== "3129") {
     throw new Error("Configure the numeric replay-only proxy endpoint on port 3129 first.");
   }

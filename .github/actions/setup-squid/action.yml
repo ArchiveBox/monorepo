@@ -17,6 +17,10 @@ inputs:
     description: Configure Chrome proxy arguments and trust for this job.
     required: false
     default: 'false'
+  replay-tests:
+    description: Expose the replay-only endpoint and isolated test command for Linux.
+    required: false
+    default: 'false'
 runs:
   using: composite
   steps:
@@ -52,6 +56,7 @@ runs:
       env:
         SQUID_PROXY: ${{ inputs.proxy }}
         SQUID_CA: ${{ inputs.ca }}
+        REPLAY_TESTS: ${{ inputs.replay-tests }}
       run: |
         set -euo pipefail
         if [[ -z "$SQUID_PROXY" || -z "$SQUID_CA" ]]; then
@@ -73,6 +78,18 @@ runs:
           exit 1
         fi
         echo 'Squid HTTPS check passed.'
+
+        if [[ "$REPLAY_TESTS" == true ]]; then
+          replay="${SQUID_PROXY%:*}:3129"
+          if ! curl --disable --fail --silent --show-error --noproxy '' --proxy "$replay" \
+              --cacert "$temp/ca.crt" --connect-timeout 3 --max-time 5 \
+              --output /dev/null https://example.com/; then
+            echo "::error title=Replay proxy unavailable::HTTPS through the replay-only endpoint failed."
+            exit 1
+          fi
+          printf 'CI_REPLAY_PROXY=%s\nCI_REPLAY_SANDBOX=%s\n' "$replay" \
+            "$GITHUB_ACTION_PATH/../../ci-proxy/run-isolated.mjs" >> "$GITHUB_ENV"
+        fi
 
         # Retain public trust because HTTPS hosts outside Squid's SSL Bump list use their origin certificates.
         system_ca="${SSL_CERT_FILE:-/etc/ssl/certs/ca-certificates.crt}"
