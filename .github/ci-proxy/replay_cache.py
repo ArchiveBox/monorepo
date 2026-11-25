@@ -359,6 +359,10 @@ class ReplayCache:
             loaded.headers = http.Headers([(k.encode("latin-1"), v.encode("latin-1")) for k, v in fields])
             if trailers:
                 loaded.trailers = http.Headers([(k.encode("latin-1"), v.encode("latin-1")) for k, v in trailers])
+            elif flow.request.method != "HEAD" and status >= 200 and status not in (204, 205, 304):
+                # Stored headers omit hop-by-hop framing, and HTTP/2 origins
+                # can omit Content-Length. Frame the raw bytes for HTTP/1.1.
+                loaded.headers["Content-Length"] = str(len(content))
             if flow.metadata.get("icloud_export_poll") and pending_icloud_export(loaded):
                 self.discard(key, name, object_size)
                 return False
