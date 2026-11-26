@@ -13,7 +13,7 @@ import sqlite3
 import socket
 import time
 import uuid
-from datetime import timezone
+from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -183,7 +183,19 @@ def replay_expiry(method, status, headers, expires):
     if token_expiry is not None:
         if not re.fullmatch(r"[0-9]{1,12}", token_expiry):
             return 0
-        return min(expires, int(token_expiry))
+        expires = min(expires, int(token_expiry))
+    if 300 <= status < 400 and (location := headers.get("location")):
+        # Azure signed download redirects (including OCI blobs) may be valid
+        # for minutes even though the artifact bytes are cacheable for a day.
+        try:
+            query = dict(parse_qsl(urlsplit(location).query, keep_blank_values=True))
+            if "sig" in query and "se" in query:
+                deadline = datetime.fromisoformat(query["se"].replace("Z", "+00:00"))
+                if deadline.tzinfo is None:
+                    return 0
+                expires = min(expires, int(deadline.timestamp()))
+        except (ValueError, OverflowError, OSError):
+            return 0
     return expires
 
 
