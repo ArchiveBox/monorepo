@@ -113,7 +113,8 @@ runs:
           # per-job so concurrent jobs retain their own proxy and trust settings.
           # Its _apt download user must read the public bundle without gaining
           # access to the private directory containing the user's wget config.
-          apt_ca="$(mktemp "$RUNNER_TEMP/apt-ca.XXXXXX.crt")"
+          # RUNNER_TEMP can live below a private home directory that _apt cannot traverse.
+          apt_ca="$(mktemp /tmp/apt-ca.XXXXXX.crt)"
           cat "$temp/ca-bundle.crt" >"$apt_ca"
           chmod 644 "$apt_ca"
           {
