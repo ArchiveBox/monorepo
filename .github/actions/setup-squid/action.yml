@@ -104,11 +104,25 @@ runs:
           fi
           printf '\nca_certificate = %s\n' "$temp/ca-bundle.crt"
         } >"$temp/wgetrc"
-        if [[ "$RUNNER_OS" == macOS ]]; then
-          # Brew keeps proxy variables but strips SSL_CERT_FILE and CURL_CA_BUNDLE
-          # before its portable Ruby bootstrap. Pass the same bundle via its curl config.
-          printf 'cacert = "%s"\n' "$temp/ca-bundle.crt" >"$temp/brew.curlrc"
-          printf 'HOMEBREW_CURLRC=%s\n' "$temp/brew.curlrc" >>"$GITHUB_ENV"
+        # Brew also runs on Linux and strips SSL_CERT_FILE and CURL_CA_BUNDLE
+        # before its portable Ruby bootstrap. Pass the same bundle via its curl config.
+        printf 'cacert = "%s"\n' "$temp/ca-bundle.crt" >"$temp/brew.curlrc"
+        printf 'HOMEBREW_CURLRC=%s\n' "$temp/brew.curlrc" >>"$GITHUB_ENV"
+        if [[ "$RUNNER_OS" == Linux ]]; then
+          # apt uses its own CA setting rather than SSL_CERT_FILE. Keep this
+          # per-job so concurrent jobs retain their own proxy and trust settings.
+          # Its _apt download user must read the public bundle without gaining
+          # access to the private directory containing the user's wget config.
+          apt_ca="$(mktemp "$RUNNER_TEMP/apt-ca.XXXXXX.crt")"
+          cat "$temp/ca-bundle.crt" >"$apt_ca"
+          chmod 644 "$apt_ca"
+          {
+            if [[ -n "${APT_CONFIG:-}" && -f "$APT_CONFIG" ]]; then
+              cat "$APT_CONFIG"
+            fi
+            printf '\nAcquire::https::CAInfo "%s";\n' "$apt_ca"
+          } >"$temp/apt.conf"
+          printf 'APT_CONFIG=%s\n' "$temp/apt.conf" >>"$GITHUB_ENV"
         fi
         # Runner control-plane and artifact transfers need fresh responses.
         # Dependency registries use the shared cache like other test inputs.
