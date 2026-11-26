@@ -81,27 +81,12 @@ runs:
 
         temp="$(mktemp -d "$RUNNER_TEMP/squid.XXXXXX")"
         printf '%s\n' "$SQUID_CA" >"$temp/ca.crt"
-        # The proxy serves this locally, so the check also works without upstream access.
-        if ! status="$(curl --disable --fail --silent --show-error --noproxy '' \
-          --connect-timeout 3 --max-time 5 --proxy "$SQUID_PROXY" --cacert "$temp/ca.crt" \
-          --output /dev/null --write-out '%{http_code}' https://example.com/)"; then
-          echo "::error title=Squid unavailable::HTTPS through the configured proxy failed."
-          exit 1
-        fi
-        if [[ "$status" != 200 ]]; then
-          echo "::error title=Squid check failed::Expected HTTP 200 through Squid, got $status."
-          exit 1
-        fi
-        echo 'Squid HTTPS check passed.'
+        # The proxy serves this endpoint locally, without relying on upstream availability.
+        bash "$GITHUB_ACTION_PATH/verify-https.sh" "$SQUID_PROXY" "$temp/ca.crt"
 
         if [[ "$REPLAY_TESTS" == true ]]; then
           replay="${SQUID_PROXY%:*}:3129"
-          if ! curl --disable --fail --silent --show-error --noproxy '' --proxy "$replay" \
-              --cacert "$temp/ca.crt" --connect-timeout 3 --max-time 5 \
-              --output /dev/null https://example.com/; then
-            echo "::error title=Replay proxy unavailable::HTTPS through the replay-only endpoint failed."
-            exit 1
-          fi
+          bash "$GITHUB_ACTION_PATH/verify-https.sh" "$replay" "$temp/ca.crt"
           printf 'CI_REPLAY_PROXY=%s\nCI_REPLAY_SANDBOX=%s\n' "$replay" \
             "$GITHUB_ACTION_PATH/../../ci-proxy/run-isolated.mjs" >> "$GITHUB_ENV"
         fi
