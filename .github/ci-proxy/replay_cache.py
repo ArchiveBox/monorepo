@@ -226,7 +226,7 @@ def pending_icloud_export(response: http.Response) -> bool:
         data = response.json()
     except (TypeError, ValueError):
         return False
-    return isinstance(data, dict) and data.get("job_status") in ("SCHEDULED_FOR_DOWNLOAD", "SENT_TO_ACTIVEMQ")
+    return isinstance(data, dict) and data.get("job_status") in ("PENDING", "SCHEDULED_FOR_DOWNLOAD", "SENT_TO_ACTIVEMQ")
 
 
 def pending_drive_export(response: http.Response) -> bool:
