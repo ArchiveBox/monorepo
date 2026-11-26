@@ -144,8 +144,8 @@ def observe(request: http.Request) -> dict:
     }
 
 
-def header_expiry(headers):
-    expires = headers.get("expires")
+def header_expiry(headers, name="expires"):
+    expires = headers.get(name)
     if expires:
         try:
             when = parsedate_to_datetime(expires)
@@ -179,6 +179,13 @@ def replay_expiry(method, status, headers, expires):
         expiry = header_expiry(headers)
         if expiry is not None:
             expires = min(expires, expiry)
+    # The Simple API is a mutable artifact index, not a package blob. A
+    # one-day floor here can hide newly published, already verified packages.
+    if headers.get("content-type", "").split(";", 1)[0].startswith("application/vnd.pypi.simple."):
+        ages = CACHE_AGE.findall(headers.get("cache-control", ""))
+        date = header_expiry(headers, "date")
+        if ages and date is not None:
+            expires = min(expires, date + min(map(int, ages)))
     token_expiry = headers.get("x-xet-token-expiration")
     if token_expiry is not None:
         if not re.fullmatch(r"[0-9]{1,12}", token_expiry):
