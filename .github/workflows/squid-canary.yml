@@ -15,6 +15,10 @@ on:
         description: Verify the replay-only listener without sending traffic upstream
         type: boolean
         default: false
+      chrome_transfer:
+        description: Compare the same large cached Chrome ZIP from both runner pools
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -120,7 +124,7 @@ jobs:
           '
 
       - name: Request live URLs through the proxy
-        if: '!inputs.replay_only'
+        if: '!inputs.replay_only && !inputs.chrome_transfer'
         shell: bash
         env:
           START_AT: ${{ inputs.start_at }}
@@ -167,7 +171,7 @@ jobs:
           (cd "$temp" && sha256sum page-1 crx-1)
 
       - name: Verify POST replay and cache isolation
-        if: '!inputs.replay_only'
+        if: '!inputs.replay_only && !inputs.chrome_transfer'
         shell: bash
         env:
           POOL: ${{ matrix.pool }}
@@ -201,3 +205,47 @@ jobs:
           grep -iq '^x-ci-cache: MISS' "$temp/changed-cookie.headers"
           grep -iq '^x-ci-cache: HIT' "$temp/repeat-cookie.headers"
           cmp "$temp/changed-cookie.json" "$temp/repeat-cookie.json"
+
+      - name: Measure Chrome cache-hit transfer
+        if: inputs.chrome_transfer
+        shell: bash
+        env:
+          START_AT: ${{ inputs.start_at }}
+        run: |
+          set -euo pipefail
+          temp="$(mktemp -d "$RUNNER_TEMP/chrome-transfer.XXXXXX")"
+          monitor=''
+          trap 'if [[ -n "$monitor" ]]; then kill "$monitor" 2>/dev/null || true; fi; rm -rf "$temp"' EXIT
+          [[ "$START_AT" =~ ^[0-9]+$ ]]
+          delay=$(( START_AT - $(date +%s) ))
+          if (( delay > 0 )); then
+            (( delay <= 180 ))
+            sleep "$delay"
+          fi
+
+          if [[ "$RUNNER_ENVIRONMENT" == github-hosted ]]; then
+            peer="${HTTPS_PROXY#http://}"
+            peer="${peer%:*}"
+            (
+              while true; do
+                tailscale status --json | jq -r --arg ip "$peer" '
+                  [.Peer[] | select((.TailscaleIPs // []) | index($ip)) |
+                    if (.CurAddr // "") != "" then "direct"
+                    elif (.Relay // "") != "" then "relay:" + .Relay
+                    else "unknown" end][0] // "unknown"
+                ' | xargs printf '%s Tailscale %s\n' "$(date -u +%FT%TZ)"
+                sleep 5
+              done
+            ) &
+            monitor="$!"
+          fi
+
+          # Use the native Puppeteer URL without adding a cache-busting query.
+          curl --disable --http1.1 --fail --silent --show-error --noproxy '' \
+            --proxy "$HTTPS_PROXY" --cacert "$SQUID_CA_CERT" --connect-timeout 5 --max-time 160 \
+            --dump-header "$temp/headers" --output "$temp/chrome.zip" \
+            --write-out 'status=%{http_code} bytes=%{size_download} first_byte=%{time_starttransfer}s total=%{time_total}s bytes_per_sec=%{speed_download}\n' \
+            'https://storage.googleapis.com/chrome-for-testing-public/157.0.8103.38/linux64/chrome-linux64.zip'
+          grep -iq '^x-ci-cache: HIT' "$temp/headers"
+          printf '%s  %s\n' '8cdeb344e9b2cefe59f4aea8d1d93d5d93054c03cde217665c16fc1f62e72a66' "$temp/chrome.zip" |
+            sha256sum --check --status
