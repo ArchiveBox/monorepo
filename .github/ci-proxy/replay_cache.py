@@ -180,13 +180,10 @@ def replay_expiry(method, status, headers, expires):
         expiry = header_expiry(headers)
         if expiry is not None:
             expires = min(expires, expiry)
-    # The Simple API is a mutable artifact index, not a package blob. The
-    # default freshness floor here can hide newly published, already verified packages.
+    # Let the registry's CDN serve its mutable index. A second replay cache
+    # can hide versions that the release check has already seen on PyPI.
     if headers.get("content-type", "").split(";", 1)[0].startswith("application/vnd.pypi.simple."):
-        ages = CACHE_AGE.findall(headers.get("cache-control", ""))
-        date = header_expiry(headers, "date")
-        if ages and date is not None:
-            expires = min(expires, date + min(map(int, ages)))
+        return 0
     token_expiry = headers.get("x-xet-token-expiration")
     if token_expiry is not None:
         if not re.fullmatch(r"[0-9]{1,12}", token_expiry):
