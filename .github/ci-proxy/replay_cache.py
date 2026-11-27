@@ -23,7 +23,8 @@ from urllib.parse import parse_qsl, urlsplit
 from mitmproxy import http
 
 LOG = logging.getLogger(__name__)
-DAY = 24 * 60 * 60
+DEFAULT_CACHE_TTL = 72 * 60 * 60
+MIN_COOKIE_FREE_FRESHNESS = 24 * 60 * 60
 BUFFER_SIZE = 4 * 1024 * 1024
 INLINE_RESPONSE_LIMIT = 256 * 1024
 RELAY_SEND_BUFFER = 128 * 1024
@@ -164,7 +165,7 @@ def freshness(response: http.Response) -> int:
     expires = header_expiry(response.headers)
     if expires is not None:
         remaining = max(remaining, expires - int(time.time()))
-    return max(DAY, remaining)
+    return max(DEFAULT_CACHE_TTL, remaining)
 
 
 def replay_expiry(method, status, headers, expires):
@@ -179,8 +180,8 @@ def replay_expiry(method, status, headers, expires):
         expiry = header_expiry(headers)
         if expiry is not None:
             expires = min(expires, expiry)
-    # The Simple API is a mutable artifact index, not a package blob. A
-    # one-day floor here can hide newly published, already verified packages.
+    # The Simple API is a mutable artifact index, not a package blob. The
+    # default freshness floor here can hide newly published, already verified packages.
     if headers.get("content-type", "").split(";", 1)[0].startswith("application/vnd.pypi.simple."):
         ages = CACHE_AGE.findall(headers.get("cache-control", ""))
         date = header_expiry(headers, "date")
@@ -193,7 +194,7 @@ def replay_expiry(method, status, headers, expires):
         expires = min(expires, int(token_expiry))
     if 300 <= status < 400 and (location := headers.get("location")):
         # Azure signed download redirects (including OCI blobs) may be valid
-        # for minutes even though the artifact bytes are cacheable for a day.
+        # for minutes even when the artifact bytes are cacheable for days.
         try:
             query = dict(parse_qsl(urlsplit(location).query, keep_blank_values=True))
             if "sig" in query and "se" in query:
@@ -215,7 +216,7 @@ def shared_asset_vary(response: http.Response):
     if "public" not in directives:
         if "Set-Cookie" in response.headers:
             return None
-        if not any(int(age) >= DAY for age in CACHE_AGE.findall(cache_control)):
+        if not any(int(age) >= MIN_COOKIE_FREE_FRESHNESS for age in CACHE_AGE.findall(cache_control)):
             vary.add("cookie")
     # Keep encoding and CORS negotiation explicit even for origins that omit Vary.
     return sorted(vary | {"accept-encoding", "origin", "access-control-request-method", "access-control-request-headers"})
