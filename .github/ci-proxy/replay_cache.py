@@ -283,6 +283,27 @@ def result(flow: http.HTTPFlow, outcome: str) -> None:
     if flow.response is not None:
         summary["vary"] = sorted(field.lower().strip() for field in flow.response.headers.get("Vary", "").split(",") if field.strip())
         summary["public"] = bool(re.search(r"(?:^|,)\s*public(?:\s*,|\s*$)", flow.response.headers.get("Cache-Control", ""), re.I))
+    if outcome in {"upstream_error", "replay_error"} and flow.error is not None:
+        # Only label known messages. Other protocol errors can contain raw
+        # request/response data and must not reach the structured log.
+        message = flow.error.msg
+        summary["transport_error"] = {
+            "Client disconnected.": "client_disconnected",
+            "server closed connection": "server_disconnected",
+        }.get(message, "other")
+        if message.startswith("HTTP/1 protocol error: peer closed connection without sending complete message body"):
+            summary["transport_error"] = "incomplete_http1_body"
+        if flow.response is not None:
+            length = flow.response.headers.get("Content-Length", "")
+            if re.fullmatch(r"[0-9]{1,16}", length):
+                summary["expected_body_bytes"] = int(length)
+            if writer := flow.metadata.get("writer"):
+                # Count what the existing disk stream received without
+                # buffering a body, scanning its file, or changing retries.
+                try:
+                    summary["spooled_body_bytes"] = writer[1].tell()
+                except (OSError, ValueError):
+                    pass
     LOG.info("proxy_cache %s", json.dumps(summary, separators=(",", ":")))
 
 
